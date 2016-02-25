@@ -134,6 +134,8 @@ executeOp Multi{..} cpu ptx gamma aval stream n args result = do
       0 -> goCPU >> traceIO dump_sched "sched/multi: Native exiting"
       1 -> goPTX >> traceIO dump_sched "sched/multi: PTX exiting"
 
+syncWith :: (Int -> Int -> IO ()) -> Finalise
+syncWith copy = Finalise $ \_ -> mapM_ (\(IE from to) -> copy from to)
 
 -- Busywork to convert the array environment into a representation specific to
 -- each backend.
