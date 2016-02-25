@@ -110,15 +110,18 @@ executeOp Multi{..} cpu ptx gamma aval stream n args result = do
       poke from to = runPTX $ streaming (\s -> void $ copyToRemoteR from to (Just s) result) (\_ -> return ())
       peek from to = runPTX $ streaming (\s -> void $ copyToHostR   from to (Just s) result) (\_ -> return ())
 
+      cpuPPT = {- 20 -} 4096
+      ptxPPT = 10 * 65535
+
       goCPU =
-        CPU.executeMain (executableR cpu)                            $ \f              -> do
-        runExecutable (CPU.fillP nativeTarget) 4096 u mempty Nothing $ \start end _tid -> do
+        CPU.executeMain (executableR cpu)                              $ \f              -> do
+        runExecutable (CPU.fillP nativeTarget) cpuPPT u mempty Nothing $ \start end _tid -> do
           f =<< marshal nativeTarget () (start, end, args, (gamma, avalForCPU aval))
           poke start end
           traceIO dump_sched (printf "CPU did range [%d,%d]" start end)
 
       goPTX =
-        runExecutable (PTX.fillP ptxTarget)   65535 v mempty Nothing $ \start end _tid -> do
+        runExecutable (PTX.fillP ptxTarget)   ptxPPT v mempty Nothing $ \start end _tid -> do
           PTX.launch ptx stream (end-start) =<< marshal ptxTarget stream (i32 start, i32 end, args, (gamma, avalForPTX aval))
           peek start end
           traceIO dump_sched (printf "PTX did range [%d,%d]" start end)
