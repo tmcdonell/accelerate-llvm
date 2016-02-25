@@ -120,7 +120,7 @@ executeOp Multi{..} cpu ptx gamma aval stream n args result = do
       goPTX =
         runExecutable (PTX.fillP ptxTarget)   65535 v mempty Nothing $ \start end _tid -> do
           PTX.launch ptx stream (end-start) =<< marshal ptxTarget stream (i32 start, i32 end, args, (gamma, avalForPTX aval))
-          poke start end
+          peek start end
           traceIO dump_sched (printf "PTX did range [%d,%d]" start end)
 
       i32 :: Int -> Int32
