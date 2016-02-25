@@ -13,7 +13,7 @@ module Data.Array.Accelerate.LLVM.PTX.Internal (
 
   PTX(..), Kernel, ptxKernel,
   Async(..), Stream, streaming,
-  executeOp,
+  executeOp, launch,
   defaultTarget,
 
   module Data.Array.Accelerate.LLVM.PTX.Context,

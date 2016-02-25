@@ -50,10 +50,13 @@ import qualified Data.Array.Accelerate.LLVM.Native.Internal     as CPU
 
 -- standard library
 import Prelude                                                  hiding ( map, mapM_, scanl, scanr )
+import Data.Int
 import Data.Foldable                                            ( mapM_ )
 import Control.Concurrent                                       ( runInBoundThread )
 import Control.Exception                                        ( bracket_ )
+import Control.Monad                                            ( void )
 import Control.Monad.State                                      ( gets, liftIO, evalStateT )
+import Text.Printf
 
 
 instance Execute Multi where
@@ -102,24 +105,31 @@ executeOp Multi{..} cpu ptx gamma aval stream n args result = do
       (u,v)     = bisect (IE 0 n)
 
       runPTX :: LLVM PTX () -> IO ()
-      runPTX f = runInBoundThread (bracket_ setup teardown action)
-        where
-          setup     = PTX.push (PTX.ptxContext ptxTarget)
-          teardown  = PTX.pop
-          action    = evalStateT (runLLVM f) ptxTarget
+      runPTX f = evalStateT (runLLVM f) ptxTarget
 
-      poke from to = runPTX $ copyToRemoteR from to Nothing result
-      peek from to = runPTX $ copyToHostR   from to Nothing result
+      poke from to = runPTX $ streaming (\s -> void $ copyToRemoteR from to (Just s) result) (\_ -> return ())
+      peek from to = runPTX $ streaming (\s -> void $ copyToHostR   from to (Just s) result) (\_ -> return ())
+
+      goCPU =
+        CPU.executeMain (executableR cpu)                            $ \f              -> do
+        runExecutable (CPU.fillP nativeTarget) 4096 u mempty Nothing $ \start end _tid -> do
+          f =<< marshal nativeTarget () (start, end, args, (gamma, avalForCPU aval))
+          poke start end
+          traceIO dump_sched (printf "CPU did range [%d,%d]" start end)
+
+      goPTX =
+        runExecutable (PTX.fillP ptxTarget)   65535 v mempty Nothing $ \start end _tid -> do
+          PTX.launch ptx stream (end-start) =<< marshal ptxTarget stream (i32 start, i32 end, args, (gamma, avalForPTX aval))
+          poke start end
+          traceIO dump_sched (printf "PTX did range [%d,%d]" start end)
+
+      i32 :: Int -> Int32
+      i32 = fromIntegral
 
   liftIO . gangIO monitorGang $ \thread ->
     case thread of
-      0 -> CPU.executeOp 2048 nativeTarget cpu (syncWith poke) gamma (avalForCPU aval)        u args >> traceIO dump_sched "sched/multi: Native exiting"
-      1 -> PTX.executeOp      ptxTarget    ptx (syncWith peek) gamma (avalForPTX aval) stream v args >> traceIO dump_sched "sched/multi: PTX exiting"
-      _ -> error "unpossible"
-
-
-syncWith :: (Int -> Int -> IO ()) -> Finalise
-syncWith copy = Finalise $ \_ -> mapM_ (\(IE from to) -> copy from to)
+      0 -> goCPU >> traceIO dump_sched "sched/multi: Native exiting"
+      1 -> goPTX >> traceIO dump_sched "sched/multi: PTX exiting"
 
 
 -- Busywork to convert the array environment into a representation specific to

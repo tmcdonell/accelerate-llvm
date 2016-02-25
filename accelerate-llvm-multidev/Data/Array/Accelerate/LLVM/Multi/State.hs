@@ -43,6 +43,7 @@ import Foreign.CUDA.Driver.Error
 import Data.Monoid
 import Control.Exception                                        ( bracket_, catch )
 import Control.Concurrent                                       ( runInBoundThread )
+import Control.Monad.State                                      ( evalStateT )
 import System.IO.Unsafe                                         ( unsafePerformIO )
 import Prelude                                                  hiding ( init )
 
@@ -77,6 +78,9 @@ createTarget native ptx = do
   gpuGang <- forkGang 1
   cpuGang <- return (CPU.theGang native)
 
+  gangIO gpuGang $ \_ -> PTX.push (PTX.ptxContext ptx)
+  gangIO cpuGang $ \_ -> PTX.push (PTX.ptxContext ptx)
+
   let
       -- The basic resources for the CPU and GPU. As we don't currently support
       -- multiple GPUs, the lone GPU knows of no other sources of work.
@@ -95,7 +99,7 @@ createTarget native ptx = do
       -- another processor, they steal the whole chunk, and then subdivide it
       -- based on their own PPT.
       --
-      native'   = native { CPU.fillP = Executable $ \ppt range sync init fill -> do
+      native'   = native { CPU.fillP = Executable $ \ppt range sync init fill ->
                               parIO (LBS.mkResource ppt cpuR <> gpuR) cpuGang range init fill sync }
 
       ptx'      = ptx    { PTX.fillP = Executable $ \ppt range sync init fill ->

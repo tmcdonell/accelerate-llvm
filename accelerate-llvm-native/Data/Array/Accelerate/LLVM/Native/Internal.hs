@@ -11,12 +11,13 @@
 
 module Data.Array.Accelerate.LLVM.Native.Internal (
 
-  Native(..),
-  executeOp,
+  Native(..), ExecutableR(..),
+  executeOp, executeMain,
   defaultTarget,
 
 ) where
 
+import Data.Array.Accelerate.LLVM.Native.Compile
 import Data.Array.Accelerate.LLVM.Native.Execute
 import Data.Array.Accelerate.LLVM.Native.State
 import Data.Array.Accelerate.LLVM.Native.Target

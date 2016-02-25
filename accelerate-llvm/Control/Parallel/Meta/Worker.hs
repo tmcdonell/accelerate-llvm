@@ -139,7 +139,7 @@ forkGangOn caps = do
     --
     message (printf "fork %d on capability %d" (workerId worker) cap)
     void $ mkWeakMVar (requestVar worker) (finaliseWorker worker)
-    void $ forkOn cap $ gangWorker i worker
+    void $ forkOn cap $ runInBoundThread (gangWorker i worker)
     return worker
 
 
