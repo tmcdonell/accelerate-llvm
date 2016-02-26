@@ -150,11 +150,11 @@ splitAt !n !range =
 --
 {-# INLINE merge #-}
 merge :: Range -> Range -> Maybe Range
+merge Empty xy    = Just xy
+merge uv    Empty = Just uv
 merge (IE u v) (IE x y)
   | v == x      = Just (IE u y)
   | otherwise   = Nothing
-merge Empty xy    = Just xy
-merge uv    Empty = Just uv
 
 
 -- | /O(1)/. Add a new range to the end of the given sequence. We assume that
