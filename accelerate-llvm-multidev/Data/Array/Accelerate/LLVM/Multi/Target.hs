@@ -17,8 +17,8 @@ module Data.Array.Accelerate.LLVM.Multi.Target
 
 -- accelerate
 import Data.Array.Accelerate.LLVM.State
-import Data.Array.Accelerate.LLVM.PTX.Internal                  ( PTX )
-import Data.Array.Accelerate.LLVM.Native.Internal               ( Native )
+import Data.Array.Accelerate.LLVM.PTX.Internal                  ( PTX, evalPTX )
+import Data.Array.Accelerate.LLVM.Native.Internal               ( Native, evalNative )
 
 import Control.Parallel.Meta.Worker
 
@@ -39,8 +39,18 @@ data Multi = Multi {
   }
 
 
-with :: LLVM t a -> (Multi -> t) -> LLVM Multi a
-with action f = do
-  target <- gets f
-  liftIO $ evalStateT (runLLVM action) target
+class With backend where
+  with :: LLVM backend a -> (Multi -> backend) -> LLVM Multi a
+
+instance With Native where
+  {-# INLINEABLE with #-}
+  with action f = do
+    target <- gets f
+    liftIO $ evalNative target action
+
+instance With PTX where
+  {-# INLINEABLE with #-}
+  with action f = do
+    target <- gets f
+    liftIO $ evalPTX target action
 

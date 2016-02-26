@@ -32,6 +32,7 @@ import Data.Array.Accelerate.LLVM.State
 import Data.Array.Accelerate.LLVM.Multi.Target
 
 -- standard library
+import Control.Exception
 import Control.Monad.State
 
 
@@ -60,16 +61,16 @@ instance A.Async Multi where
   streaming f g = do
     ptx1 <- gets ptxTarget1
     ptx2 <- gets ptxTarget2
-    st   <- liftIO $ (,) <$> Stream.create (ptxContext ptx1) (ptxStreamReservoir ptx1)
-                         <*> Stream.create (ptxContext ptx2) (ptxStreamReservoir ptx2)
+    st   <- liftIO $ (,) <$> Stream.create (ptxContext ptx1) (ptxStreamReservoir ptx1) `using` ptx1
+                         <*> Stream.create (ptxContext ptx2) (ptxStreamReservoir ptx2) `using` ptx2
     x    <- f st
-    evt  <- liftIO $ (,) <$> Event.waypoint (fst st)
-                         <*> Event.waypoint (snd st)
+    evt  <- liftIO $ (,) <$> Event.waypoint (fst st) `using` ptx1
+                         <*> Event.waypoint (snd st) `using` ptx2
     y    <- g (PTX.Async (fst evt) x, PTX.Async (snd evt) x)
-    liftIO $ do Stream.destroy (ptxContext ptx1) (ptxStreamReservoir ptx1) (fst st)
-                Stream.destroy (ptxContext ptx2) (ptxStreamReservoir ptx2) (fst st)
-                Event.destroy (fst evt)
-                Event.destroy (snd evt)
+    liftIO $ do Stream.destroy (ptxContext ptx1) (ptxStreamReservoir ptx1) (fst st) `using` ptx1
+                Stream.destroy (ptxContext ptx2) (ptxStreamReservoir ptx2) (snd st) `using` ptx2
+                Event.destroy (fst evt) `using` ptx1
+                Event.destroy (snd evt) `using` ptx2
     return y
 
   {-# INLINE async #-}
@@ -77,4 +78,8 @@ instance A.Async Multi where
     r <- a
     e <- liftIO $ (,) <$> Event.waypoint s1 <*> Event.waypoint s2
     return (PTX.Async (fst e) r, PTX.Async (snd e) r)
+
+using :: IO a -> PTX -> IO a
+using action ptx =
+  bracket_ (PTX.push (ptxContext ptx)) (PTX.pop) action
 

@@ -111,32 +111,26 @@ executeOp Multi{..} cpu ptx1 ptx2 gamma aval (s1,s2) n args result = do
   let -- Initialise each backend with an equal portion of work
       (u,v,w)      = trisect (IE 0 n)
 
-      runPTX :: PTX -> LLVM PTX () -> IO ()
-      runPTX on f = evalStateT (runLLVM f) on
-
-      poke on from to = runPTX on $ streaming (\s -> void $ copyToRemoteR from to (Just s) result) (\_ -> return ())
-      peek on from to = runPTX on $ streaming (\s -> void $ copyToHostR   from to (Just s) result) (\_ -> return ())
-
-      cpuPPT = {- 20 -} 4096
-      ptxPPT = 10 * 65535
+      using  = flip PTX.evalPTX
+      cpuPPT = 5000
+      ptxPPT = 500000
 
       goCPU =
         CPU.executeMain (executableR cpu)                              $ \f              -> do
         runExecutable (CPU.fillP nativeTarget) cpuPPT u mempty Nothing $ \start end _tid -> do
           f =<< marshal nativeTarget () (start, end, args, (gamma, avalForCPU aval))
-          -- poke start end
           traceIO dump_sched (printf "CPU did range [%d,%d]" start end)
 
       goPTX1 =
         runExecutable (PTX.fillP ptxTarget1)  ptxPPT v mempty Nothing $ \start end _tid -> do
           PTX.launch ptx1 s1 (end-start) =<< marshal ptxTarget1 s1 (i32 start, i32 end, args, (gamma, avalForPTX fst aval))
-          peek ptxTarget1 start end
+          copyToHostR start end (Just s1) result `using` ptxTarget1
           traceIO dump_sched (printf "PTX-1 did range [%d,%d]" start end)
 
       goPTX2 =
         runExecutable (PTX.fillP ptxTarget2)  ptxPPT w mempty Nothing $ \start end _tid -> do
           PTX.launch ptx2 s2 (end-start) =<< marshal ptxTarget2 s2 (i32 start, i32 end, args, (gamma, avalForPTX snd aval))
-          peek ptxTarget2 start end
+          copyToHostR start end (Just s2) result `using` ptxTarget2
           traceIO dump_sched (printf "PTX-2 did range [%d,%d]" start end)
 
       i32 :: Int -> Int32
@@ -148,8 +142,8 @@ executeOp Multi{..} cpu ptx1 ptx2 gamma aval (s1,s2) n args result = do
       1 -> goPTX1 >> traceIO dump_sched "sched/multi: PTX-1 exiting"
       2 -> goPTX2 >> traceIO dump_sched "sched/multi: PTX-2 exiting"
 
-  poke ptxTarget1 0 n
-  poke ptxTarget2 0 n
+  copyToRemoteR 0 n (Just s1) result `using` ptxTarget1
+  copyToRemoteR 0 n (Just s2) result `using` ptxTarget2
 
 
 syncWith :: (Int -> Int -> IO ()) -> Finalise

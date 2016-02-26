@@ -14,6 +14,7 @@ module Data.Array.Accelerate.LLVM.Native.Internal (
   Native(..), ExecutableR(..),
   executeOp, executeMain,
   defaultTarget, createTarget,
+  evalNative,
 
 ) where
 

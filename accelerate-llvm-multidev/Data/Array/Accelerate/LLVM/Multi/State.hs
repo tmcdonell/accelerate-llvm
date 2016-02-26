@@ -19,8 +19,6 @@ module Data.Array.Accelerate.LLVM.Multi.State (
 ) where
 
 -- accelerate
-import Data.Array.Accelerate.Error
-
 import Control.Parallel.Meta
 import Control.Parallel.Meta.Worker
 import qualified Control.Parallel.Meta.Trans.LBS                as LBS
@@ -37,12 +35,10 @@ import qualified Data.Array.Accelerate.LLVM.Native.Internal     as CPU
 import qualified Data.Array.Accelerate.Debug                    as Debug
 
 -- cuda
-import Foreign.CUDA.Driver.Error
 import qualified Foreign.CUDA.Driver                            as CUDA
 
 -- standard library
 import Data.Monoid
-import Control.Exception                                        ( bracket_, catch )
 import Control.Concurrent                                       ( runInBoundThread )
 import System.IO.Unsafe                                         ( unsafePerformIO )
 import Prelude                                                  hiding ( init )
@@ -52,15 +48,7 @@ import Prelude                                                  hiding ( init )
 -- environment; copied from that backend.
 --
 evalMulti :: Multi -> LLVM Multi a -> IO a
-evalMulti multi acc =
-  runInBoundThread (bracket_ setup teardown action)
-  `catch`
-  \e -> $internalError "unhandled" (show (e :: CUDAException))
-  where
-    setup       = PTX.push (PTX.ptxContext (ptxTarget1 multi)) >>
-                  PTX.push (PTX.ptxContext (ptxTarget2 multi))
-    teardown    = PTX.pop >> PTX.pop
-    action      = evalLLVM multi acc
+evalMulti multi action = runInBoundThread (evalLLVM multi action)
 
 
 -- | Create a multi-device execution target by combining the given CPU and GPU
@@ -79,10 +67,6 @@ createTarget native ptx1 ptx2 = do
   gpuGang1 <- forkGang 1
   gpuGang2 <- forkGang 1
   cpuGang  <- return (CPU.theGang native)
-
-  gangIO gpuGang1 $ \_ -> PTX.push (PTX.ptxContext ptx1) >> PTX.push (PTX.ptxContext ptx2)
-  gangIO gpuGang2 $ \_ -> PTX.push (PTX.ptxContext ptx1) >> PTX.push (PTX.ptxContext ptx2)
-  gangIO cpuGang  $ \_ -> PTX.push (PTX.ptxContext ptx1) >> PTX.push (PTX.ptxContext ptx2)
 
   let
       -- The basic resources for the CPU and GPU. As we don't currently support

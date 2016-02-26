@@ -15,6 +15,7 @@ module Data.Array.Accelerate.LLVM.PTX.Internal (
   Async(..), Stream, streaming,
   executeOp, launch,
   defaultTarget, createTargetForDevice, createTargetFromContext,
+  evalPTX,
   mallocArray,
 
   module Data.Array.Accelerate.LLVM.PTX.Context,
