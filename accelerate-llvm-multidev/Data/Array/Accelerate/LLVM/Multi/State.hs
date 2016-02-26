@@ -47,8 +47,6 @@ import Control.Concurrent                                       ( runInBoundThre
 import System.IO.Unsafe                                         ( unsafePerformIO )
 import Prelude                                                  hiding ( init )
 
-import GHC.Conc
-
 
 -- | Execute a computation in the Multi backend. Requires initialising the CUDA
 -- environment; copied from that backend.
@@ -127,8 +125,7 @@ createTarget native ptx1 ptx2 = do
 
 -- | Initialise the CPU threads and GPUs that will be used to execute
 -- computations. This spawns one worker on each capability, which can be set via
--- +RTS -Nn. Note that the GPU worker(s) constitute one capability, so for N CPU
--- worker threads, you must specify (N+1) HECs.
+-- +RTS -Nn.
 --
 -- This globally shared target is auto-initialised on startup and used by
 -- default for all computations.
@@ -145,8 +142,7 @@ defaultTarget = unsafePerformIO $ do
   prp1 <- CUDA.props dev1
   ptx0 <- PTX.createTargetForDevice dev0 prp0 []
   ptx1 <- PTX.createTargetForDevice dev1 prp1 []
-  cpu  <- CPU.createTarget [1 .. ((numCapabilities-1) `max` 1)]
-  createTarget cpu ptx0 ptx1
+  createTarget CPU.defaultTarget ptx0 ptx1
 
   -- createTarget CPU.defaultTarget PTX.defaultTarget
 
