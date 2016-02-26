@@ -15,6 +15,7 @@
 module Data.Array.Accelerate.LLVM.PTX.Execute.Stream (
 
   Stream, Reservoir, new, streaming,
+  create, destroy,
 
 ) where
 

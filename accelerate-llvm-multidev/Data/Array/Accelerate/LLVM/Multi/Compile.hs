@@ -35,7 +35,8 @@ import Control.Applicative
 
 instance Compile Multi where
   data ExecutableR Multi = MultiR {
-          ptxExecutable    :: ExecutableR PTX
+          ptxExecutable1   :: ExecutableR PTX
+        , ptxExecutable2   :: ExecutableR PTX
         , nativeExecutable :: ExecutableR Native
         }
   --
@@ -49,6 +50,7 @@ compileForMulti
     -> Gamma aenv
     -> LLVM Multi (ExecutableR Multi)
 compileForMulti acc aenv =
-  MultiR <$> compileForTarget acc aenv `with` ptxTarget
+  MultiR <$> compileForTarget acc aenv `with` ptxTarget1
+         <*> compileForTarget acc aenv `with` ptxTarget2
          <*> compileForTarget acc aenv `with` nativeTarget
 

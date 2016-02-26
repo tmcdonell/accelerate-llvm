@@ -13,7 +13,7 @@ module Data.Array.Accelerate.LLVM.Native.Internal (
 
   Native(..), ExecutableR(..),
   executeOp, executeMain,
-  defaultTarget,
+  defaultTarget, createTarget,
 
 ) where
 

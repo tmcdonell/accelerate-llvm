@@ -14,7 +14,8 @@ module Data.Array.Accelerate.LLVM.PTX.Internal (
   PTX(..), Kernel, ptxKernel,
   Async(..), Stream, streaming,
   executeOp, launch,
-  defaultTarget,
+  defaultTarget, createTargetForDevice, createTargetFromContext,
+  mallocArray,
 
   module Data.Array.Accelerate.LLVM.PTX.Context,
 
@@ -27,4 +28,5 @@ import Data.Array.Accelerate.LLVM.PTX.Execute.Async             ( Async(..) )
 import Data.Array.Accelerate.LLVM.PTX.Execute.Stream
 import Data.Array.Accelerate.LLVM.PTX.State
 import Data.Array.Accelerate.LLVM.PTX.Target
+import Data.Array.Accelerate.LLVM.PTX.Array.Prim                ( mallocArray )
 

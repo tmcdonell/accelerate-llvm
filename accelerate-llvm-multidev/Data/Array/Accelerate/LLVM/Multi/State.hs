@@ -38,14 +38,16 @@ import qualified Data.Array.Accelerate.Debug                    as Debug
 
 -- cuda
 import Foreign.CUDA.Driver.Error
+import qualified Foreign.CUDA.Driver                            as CUDA
 
 -- standard library
 import Data.Monoid
 import Control.Exception                                        ( bracket_, catch )
 import Control.Concurrent                                       ( runInBoundThread )
-import Control.Monad.State                                      ( evalStateT )
 import System.IO.Unsafe                                         ( unsafePerformIO )
 import Prelude                                                  hiding ( init )
+
+import GHC.Conc
 
 
 -- | Execute a computation in the Multi backend. Requires initialising the CUDA
@@ -57,8 +59,9 @@ evalMulti multi acc =
   `catch`
   \e -> $internalError "unhandled" (show (e :: CUDAException))
   where
-    setup       = PTX.push (PTX.ptxContext (ptxTarget multi))
-    teardown    = PTX.pop
+    setup       = PTX.push (PTX.ptxContext (ptxTarget1 multi)) >>
+                  PTX.push (PTX.ptxContext (ptxTarget2 multi))
+    teardown    = PTX.pop >> PTX.pop
     action      = evalLLVM multi acc
 
 
@@ -70,22 +73,25 @@ evalMulti multi acc =
 -- processors. A suitable PPT should be chosen when invoking the continuation in
 -- order to balance scheduler overhead with fine-grained function calls.
 --
-createTarget :: Native -> PTX -> IO Multi
-createTarget native ptx = do
+createTarget :: Native -> PTX -> PTX -> IO Multi
+createTarget native ptx1 ptx2 = do
 
-  -- Although we only support one GPU (at the moment), we still need to spawn a
-  -- worker thread so that it can take part in work stealing.
-  gpuGang <- forkGang 1
-  cpuGang <- return (CPU.theGang native)
+  -- We still need to spawn a monitor thread for each GPU so that it can
+  -- participate in work stealing.
+  gpuGang1 <- forkGang 1
+  gpuGang2 <- forkGang 1
+  cpuGang  <- return (CPU.theGang native)
 
-  gangIO gpuGang $ \_ -> PTX.push (PTX.ptxContext ptx)
-  gangIO cpuGang $ \_ -> PTX.push (PTX.ptxContext ptx)
+  gangIO gpuGang1 $ \_ -> PTX.push (PTX.ptxContext ptx1) >> PTX.push (PTX.ptxContext ptx2)
+  gangIO gpuGang2 $ \_ -> PTX.push (PTX.ptxContext ptx1) >> PTX.push (PTX.ptxContext ptx2)
+  gangIO cpuGang  $ \_ -> PTX.push (PTX.ptxContext ptx1) >> PTX.push (PTX.ptxContext ptx2)
 
   let
       -- The basic resources for the CPU and GPU. As we don't currently support
       -- multiple GPUs, the lone GPU knows of no other sources of work.
       --
-      gpuR      = Single.mkResource
+      gpuR1     = Single.mkResource
+      gpuR2     = Single.mkResource
       cpuR      = SMP.mkResource (2 * gangSize cpuGang) cpuGang
 
       -- Construct the new Executable contexts for each backend, where the CPU
@@ -100,12 +106,15 @@ createTarget native ptx = do
       -- based on their own PPT.
       --
       native'   = native { CPU.fillP = Executable $ \ppt range sync init fill ->
-                              parIO (LBS.mkResource ppt cpuR <> gpuR) cpuGang range init fill sync }
+                              parIO (LBS.mkResource ppt cpuR <> gpuR1 <> gpuR2) cpuGang range init fill sync }
 
-      ptx'      = ptx    { PTX.fillP = Executable $ \ppt range sync init fill ->
-                              parIO (LBS.mkResource ppt gpuR <> cpuR) gpuGang range init fill sync }
+      ptx1'     = ptx1   { PTX.fillP = Executable $ \ppt range sync init fill ->
+                              parIO (LBS.mkResource ppt gpuR1 <> gpuR2 <> cpuR) gpuGang1 range init fill sync }
+
+      ptx2'     = ptx2   { PTX.fillP = Executable $ \ppt range sync init fill ->
+                              parIO (LBS.mkResource ppt gpuR2 <> gpuR1 <> cpuR) gpuGang2 range init fill sync }
   --
-  return $! Multi ptx' native' defaultMonitor
+  return $! Multi ptx1' ptx2' native' defaultMonitor
 
 
 -- Top-level mutable state
@@ -118,7 +127,8 @@ createTarget native ptx = do
 
 -- | Initialise the CPU threads and GPUs that will be used to execute
 -- computations. This spawns one worker on each capability, which can be set via
--- +RTS -Nn.
+-- +RTS -Nn. Note that the GPU worker(s) constitute one capability, so for N CPU
+-- worker threads, you must specify (N+1) HECs.
 --
 -- This globally shared target is auto-initialised on startup and used by
 -- default for all computations.
@@ -127,12 +137,23 @@ createTarget native ptx = do
 defaultTarget :: Multi
 defaultTarget = unsafePerformIO $ do
   Debug.traceIO Debug.dump_gc "gc: initialise default multi target"
-  createTarget CPU.defaultTarget PTX.defaultTarget
+  CUDA.initialise []
+  ngpu <- CUDA.count
+  dev0 <- CUDA.device 0
+  dev1 <- CUDA.device (1 `mod` ngpu)
+  prp0 <- CUDA.props dev0
+  prp1 <- CUDA.props dev1
+  ptx0 <- PTX.createTargetForDevice dev0 prp0 []
+  ptx1 <- PTX.createTargetForDevice dev1 prp1 []
+  cpu  <- CPU.createTarget [1 .. ((numCapabilities-1) `max` 1)]
+  createTarget cpu ptx0 ptx1
+
+  -- createTarget CPU.defaultTarget PTX.defaultTarget
 
 -- A gang whose only job is to dispatch the initial work distribution to the
 -- available worker backends.
 --
 {-# NOINLINE defaultMonitor #-}
 defaultMonitor :: Gang
-defaultMonitor = unsafePerformIO $ forkGang 2
+defaultMonitor = unsafePerformIO $ forkGang 3
 

@@ -1,6 +1,7 @@
 {-# LANGUAGE CPP              #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs            #-}
+{-# LANGUAGE RankNTypes       #-}
 {-# LANGUAGE RecordWildCards  #-}
 {-# LANGUAGE TemplateHaskell  #-}
 {-# OPTIONS -fno-warn-orphans #-}
@@ -27,6 +28,7 @@ import Data.Array.Accelerate.Error                              ( internalError 
 
 import Data.Array.Accelerate.LLVM.State
 import Data.Array.Accelerate.LLVM.Execute
+import Data.Array.Accelerate.LLVM.Execute.Async                 ( AsyncR )
 import Data.Array.Accelerate.LLVM.Execute.Marshal
 import Data.Array.Accelerate.LLVM.Execute.Environment           ( AvalR(..) )
 
@@ -36,7 +38,7 @@ import Data.Array.Accelerate.LLVM.Multi.Target
 import Data.Array.Accelerate.LLVM.Multi.Execute.Async
 import Data.Array.Accelerate.LLVM.Multi.Execute.Environment
 
-import Data.Range.Range                                         ( Range(..), bisect )
+import Data.Range.Range                                         ( Range(..), trisect )
 import Control.Parallel.Meta
 import Control.Parallel.Meta.Worker
 
@@ -78,13 +80,17 @@ simpleOp
     -> LLVM Multi (Array sh e)
 simpleOp MultiR{..} gamma aenv stream sh = do
   let
-      ptx = case ptxKernel ptxExecutable of
-              k:_ -> k
-              _   -> $internalError "execute" "kernel not found"
+      ptx1 = case ptxKernel ptxExecutable1 of
+               k:_ -> k
+               _   -> $internalError "execute" "kernel not found"
+
+      ptx2 = case ptxKernel ptxExecutable2 of
+               k:_ -> k
+               _   -> $internalError "execute" "kernel not found"
   --
   out   <- allocateRemote sh
   multi <- gets llvmTarget
-  liftIO $ executeOp multi nativeExecutable ptx gamma aenv stream (size sh) out out
+  liftIO $ executeOp multi nativeExecutable ptx1 ptx2 gamma aenv stream (size sh) out out
   return out
 
 
@@ -93,6 +99,7 @@ executeOp
     => Multi
     -> ExecutableR Native
     -> Kernel
+    -> Kernel
     -> Gamma aenv
     -> Aval aenv
     -> Stream
@@ -100,15 +107,15 @@ executeOp
     -> args
     -> Array sh e
     -> IO ()
-executeOp Multi{..} cpu ptx gamma aval stream n args result = do
+executeOp Multi{..} cpu ptx1 ptx2 gamma aval (s1,s2) n args result = do
   let -- Initialise each backend with an equal portion of work
-      (u,v)     = bisect (IE 0 n)
+      (u,v,w)      = trisect (IE 0 n)
 
-      runPTX :: LLVM PTX () -> IO ()
-      runPTX f = evalStateT (runLLVM f) ptxTarget
+      runPTX :: PTX -> LLVM PTX () -> IO ()
+      runPTX on f = evalStateT (runLLVM f) on
 
-      poke from to = runPTX $ streaming (\s -> void $ copyToRemoteR from to (Just s) result) (\_ -> return ())
-      peek from to = runPTX $ streaming (\s -> void $ copyToHostR   from to (Just s) result) (\_ -> return ())
+      poke on from to = runPTX on $ streaming (\s -> void $ copyToRemoteR from to (Just s) result) (\_ -> return ())
+      peek on from to = runPTX on $ streaming (\s -> void $ copyToHostR   from to (Just s) result) (\_ -> return ())
 
       cpuPPT = {- 20 -} 4096
       ptxPPT = 10 * 65535
@@ -117,22 +124,33 @@ executeOp Multi{..} cpu ptx gamma aval stream n args result = do
         CPU.executeMain (executableR cpu)                              $ \f              -> do
         runExecutable (CPU.fillP nativeTarget) cpuPPT u mempty Nothing $ \start end _tid -> do
           f =<< marshal nativeTarget () (start, end, args, (gamma, avalForCPU aval))
-          poke start end
+          -- poke start end
           traceIO dump_sched (printf "CPU did range [%d,%d]" start end)
 
-      goPTX =
-        runExecutable (PTX.fillP ptxTarget)   ptxPPT v mempty Nothing $ \start end _tid -> do
-          PTX.launch ptx stream (end-start) =<< marshal ptxTarget stream (i32 start, i32 end, args, (gamma, avalForPTX aval))
-          peek start end
-          traceIO dump_sched (printf "PTX did range [%d,%d]" start end)
+      goPTX1 =
+        runExecutable (PTX.fillP ptxTarget1)  ptxPPT v mempty Nothing $ \start end _tid -> do
+          PTX.launch ptx1 s1 (end-start) =<< marshal ptxTarget1 s1 (i32 start, i32 end, args, (gamma, avalForPTX fst aval))
+          peek ptxTarget1 start end
+          traceIO dump_sched (printf "PTX-1 did range [%d,%d]" start end)
+
+      goPTX2 =
+        runExecutable (PTX.fillP ptxTarget2)  ptxPPT w mempty Nothing $ \start end _tid -> do
+          PTX.launch ptx2 s2 (end-start) =<< marshal ptxTarget2 s2 (i32 start, i32 end, args, (gamma, avalForPTX snd aval))
+          peek ptxTarget2 start end
+          traceIO dump_sched (printf "PTX-2 did range [%d,%d]" start end)
 
       i32 :: Int -> Int32
       i32 = fromIntegral
 
   liftIO . gangIO monitorGang $ \thread ->
     case thread of
-      0 -> goCPU >> traceIO dump_sched "sched/multi: Native exiting"
-      1 -> goPTX >> traceIO dump_sched "sched/multi: PTX exiting"
+      0 -> goCPU  >> traceIO dump_sched "sched/multi: Native exiting"
+      1 -> goPTX1 >> traceIO dump_sched "sched/multi: PTX-1 exiting"
+      2 -> goPTX2 >> traceIO dump_sched "sched/multi: PTX-2 exiting"
+
+  poke ptxTarget1 0 n
+  poke ptxTarget2 0 n
+
 
 syncWith :: (Int -> Int -> IO ()) -> Finalise
 syncWith copy = Finalise $ \_ -> mapM_ (\(IE from to) -> copy from to)
@@ -141,10 +159,10 @@ syncWith copy = Finalise $ \_ -> mapM_ (\(IE from to) -> copy from to)
 -- each backend.
 --
 avalForCPU :: Aval aenv -> AvalR Native aenv
-avalForCPU Aempty                   = Aempty
-avalForCPU (Apush aenv (Async _ a)) = avalForCPU aenv `Apush` a
+avalForCPU Aempty                     = Aempty
+avalForCPU (Apush aenv (Async _ a,_)) = avalForCPU aenv `Apush` a
 
-avalForPTX :: Aval aenv -> AvalR PTX aenv
-avalForPTX Aempty         = Aempty
-avalForPTX (Apush aenv a) = avalForPTX aenv `Apush` a
+avalForPTX :: (forall a. AsyncR Multi a -> AsyncR PTX a) -> Aval aenv -> AvalR PTX aenv
+avalForPTX _ Aempty         = Aempty
+avalForPTX f (Apush aenv a) = avalForPTX f aenv `Apush` f a
 

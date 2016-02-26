@@ -32,7 +32,8 @@ import Control.Monad.State
 -- with either or both of these target backends.
 --
 data Multi = Multi {
-    ptxTarget           :: {-# UNPACK #-} !PTX
+    ptxTarget1          :: {-# UNPACK #-} !PTX
+  , ptxTarget2          :: {-# UNPACK #-} !PTX
   , nativeTarget        :: {-# UNPACK #-} !Native
   , monitorGang         :: {-# UNPACK #-} !Gang
   }

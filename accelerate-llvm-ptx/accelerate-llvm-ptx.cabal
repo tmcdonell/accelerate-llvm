@@ -54,6 +54,8 @@ Library
   exposed-modules:
     Data.Array.Accelerate.LLVM.PTX
     Data.Array.Accelerate.LLVM.PTX.Internal
+    Data.Array.Accelerate.LLVM.PTX.Execute.Event
+    Data.Array.Accelerate.LLVM.PTX.Execute.Stream
 
   other-modules:
     Data.Array.Accelerate.LLVM.PTX.Analysis.Device
@@ -69,23 +71,18 @@ Library
 
     Data.Array.Accelerate.LLVM.PTX.Execute
     Data.Array.Accelerate.LLVM.PTX.Execute.Async
-    Data.Array.Accelerate.LLVM.PTX.Execute.Stream
+    Data.Array.Accelerate.LLVM.PTX.Execute.Environment
+    Data.Array.Accelerate.LLVM.PTX.Execute.Marshal
 
     Data.Array.Accelerate.LLVM.PTX.CodeGen
     Data.Array.Accelerate.LLVM.PTX.CodeGen.Base
---    Data.Array.Accelerate.LLVM.PTX.CodeGen.Fold
     Data.Array.Accelerate.LLVM.PTX.CodeGen.Generate
     Data.Array.Accelerate.LLVM.PTX.CodeGen.Loop
     Data.Array.Accelerate.LLVM.PTX.CodeGen.Map
---    Data.Array.Accelerate.LLVM.PTX.CodeGen.Transform
 
     Data.Array.Accelerate.LLVM.PTX.Compile
     Data.Array.Accelerate.LLVM.PTX.Compile.Link
     Data.Array.Accelerate.LLVM.PTX.Compile.Libdevice
-
-    Data.Array.Accelerate.LLVM.PTX.Execute.Environment
-    Data.Array.Accelerate.LLVM.PTX.Execute.Event
-    Data.Array.Accelerate.LLVM.PTX.Execute.Marshal
 
   build-depends:
           base                          >= 4.7 && <4.9

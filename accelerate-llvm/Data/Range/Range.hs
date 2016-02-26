@@ -100,6 +100,22 @@ bisect range =
       (x, y)
 
 
+-- | /O(1)/. Split an interval into three roughly equally sized ranges.
+--
+{-# INLINE trisect #-}
+trisect :: Range -> (Range, Range, Range)
+trisect range =
+  case range of
+    Empty  -> (Empty, Empty, Empty)
+    _      ->
+      let n      = size range
+          m      = (n + 2) `quotInt` 3
+          (x,yz) = splitAt m range
+          (y,z)  = splitAt m yz
+      in
+      (x, y, z)
+
+
 -- | /O(1)/. Return the first @n@ elements of the range, or the range itself if
 -- @n > size@.
 --
@@ -130,15 +146,15 @@ splitAt !n !range =
       (x, y)
 
 
--- | If the two ranges are adjacent, return one combined range. The ranges must
--- not be empty.
+-- | If the two ranges are adjacent, return one combined range.
 --
 {-# INLINE merge #-}
 merge :: Range -> Range -> Maybe Range
 merge (IE u v) (IE x y)
   | v == x      = Just (IE u y)
   | otherwise   = Nothing
-merge _ _       = $internalError "merge" "empty range encountered"
+merge Empty xy    = Just xy
+merge uv    Empty = Just uv
 
 
 -- | /O(1)/. Add a new range to the end of the given sequence. We assume that
