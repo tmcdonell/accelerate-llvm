@@ -28,7 +28,6 @@ import qualified Data.Array.Accelerate.LLVM.Execute.Async       as A
 import qualified Data.Array.Accelerate.LLVM.PTX.Execute.Event   as Event
 import qualified Data.Array.Accelerate.LLVM.PTX.Execute.Stream  as Stream
 
-import Data.Array.Accelerate.LLVM.State
 import Data.Array.Accelerate.LLVM.Multi.Target
 
 -- standard library
@@ -61,23 +60,26 @@ instance A.Async Multi where
   streaming f g = do
     ptx1 <- gets ptxTarget1
     ptx2 <- gets ptxTarget2
-    st   <- liftIO $ (,) <$> Stream.create (ptxContext ptx1) (ptxStreamReservoir ptx1) `using` ptx1
-                         <*> Stream.create (ptxContext ptx2) (ptxStreamReservoir ptx2) `using` ptx2
-    x    <- f st
-    evt  <- liftIO $ (,) <$> Event.waypoint (fst st) `using` ptx1
-                         <*> Event.waypoint (snd st) `using` ptx2
-    y    <- g (PTX.Async (fst evt) x, PTX.Async (snd evt) x)
-    liftIO $ do Stream.destroy (ptxContext ptx1) (ptxStreamReservoir ptx1) (fst st) `using` ptx1
-                Stream.destroy (ptxContext ptx2) (ptxStreamReservoir ptx2) (snd st) `using` ptx2
-                Event.destroy (fst evt) `using` ptx1
-                Event.destroy (snd evt) `using` ptx2
+    st1  <- liftIO $ Stream.create (ptxContext ptx1) (ptxStreamReservoir ptx1) `using` ptx1
+    st2  <- liftIO $ Stream.create (ptxContext ptx2) (ptxStreamReservoir ptx2) `using` ptx2
+    x    <- f (st1, st2)
+    e1   <- liftIO $ Event.waypoint st1 `using` ptx1
+    e2   <- liftIO $ Event.waypoint st2 `using` ptx2
+    y    <- g (PTX.Async e1 x, PTX.Async e2 x)
+    liftIO $ do Stream.destroy (ptxContext ptx1) (ptxStreamReservoir ptx1) st1 `using` ptx1
+                Stream.destroy (ptxContext ptx2) (ptxStreamReservoir ptx2) st2 `using` ptx2
+                Event.destroy e1 `using` ptx1
+                Event.destroy e2 `using` ptx2
     return y
 
   {-# INLINE async #-}
   async (s1, s2) a = do
-    r <- a
-    e <- liftIO $ (,) <$> Event.waypoint s1 <*> Event.waypoint s2
-    return (PTX.Async (fst e) r, PTX.Async (snd e) r)
+    ptx1 <- gets ptxTarget1
+    ptx2 <- gets ptxTarget2
+    r    <- a
+    e1   <- liftIO $ Event.waypoint s1 `using` ptx1
+    e2   <- liftIO $ Event.waypoint s2 `using` ptx2
+    return (PTX.Async e1 r, PTX.Async e2 r)
 
 using :: IO a -> PTX -> IO a
 using action ptx =
