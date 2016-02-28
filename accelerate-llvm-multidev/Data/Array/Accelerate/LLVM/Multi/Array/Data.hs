@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# OPTIONS -fno-warn-orphans #-}
 -- |
 -- Module      : Data.Array.Accelerate.LLVM.Multi.Array.Data
@@ -19,7 +20,7 @@ module Data.Array.Accelerate.LLVM.Multi.Array.Data (
 -- accelerate
 import Data.Array.Accelerate.LLVM.Array.Data
 import Data.Array.Accelerate.LLVM.Multi.Target
-import Data.Array.Accelerate.LLVM.Multi.Execute.Async           ()
+import Data.Array.Accelerate.LLVM.Multi.Async                   ()
 import Data.Array.Accelerate.LLVM.PTX                           ()
 import qualified Data.Array.Accelerate.LLVM.PTX.Internal        as PTX
 
@@ -37,14 +38,15 @@ import Control.Monad.Trans                                      ( liftIO )
 instance Remote Multi where
 
   {-# INLINEABLE allocateRemote #-}
-  allocateRemote sh = do
-    arr <- liftIO $ Sugar.allocateArray sh
-    runArray (PTX.mallocArray (Sugar.size sh)) arr `with` ptxTarget1
-    runArray (PTX.mallocArray (Sugar.size sh)) arr `with` ptxTarget2
+  allocateRemote !sh = do
+    arr <- liftIO $! Sugar.allocateArray sh
+    n   <- return $! Sugar.size sh
+    runArray arr (PTX.mallocArray n) `with` ptxTarget1
+    runArray arr (PTX.mallocArray n) `with` ptxTarget2
     return arr
 
   {-# INLINEABLE useRemoteR #-}
-  useRemoteR mst arr = do
-    useRemoteR (fmap fst mst) arr `with` ptxTarget1
-    useRemoteR (fmap snd mst) arr `with` ptxTarget2
+  useRemoteR !n !mst !adata = do
+    useRemoteR n (fmap fst mst) adata `with` ptxTarget1
+    useRemoteR n (fmap snd mst) adata `with` ptxTarget2
 

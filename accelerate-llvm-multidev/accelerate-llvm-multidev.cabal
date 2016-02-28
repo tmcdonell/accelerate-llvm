@@ -52,12 +52,12 @@ library
 
   other-modules:
     Data.Array.Accelerate.LLVM.Multi.Array.Data
+    Data.Array.Accelerate.LLVM.Multi.Async
     Data.Array.Accelerate.LLVM.Multi.Compile
     Data.Array.Accelerate.LLVM.Multi.State
     Data.Array.Accelerate.LLVM.Multi.Target
 
     Data.Array.Accelerate.LLVM.Multi.Execute
-    Data.Array.Accelerate.LLVM.Multi.Execute.Async
     Data.Array.Accelerate.LLVM.Multi.Execute.Environment
 
   build-depends:

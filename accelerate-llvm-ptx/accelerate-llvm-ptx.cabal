@@ -64,13 +64,13 @@ Library
     Data.Array.Accelerate.LLVM.PTX.Array.Prim
     Data.Array.Accelerate.LLVM.PTX.Array.Remote
     Data.Array.Accelerate.LLVM.PTX.Array.Table
+    Data.Array.Accelerate.LLVM.PTX.Async
     Data.Array.Accelerate.LLVM.PTX.Context
     Data.Array.Accelerate.LLVM.PTX.Debug
     Data.Array.Accelerate.LLVM.PTX.State
     Data.Array.Accelerate.LLVM.PTX.Target
 
     Data.Array.Accelerate.LLVM.PTX.Execute
-    Data.Array.Accelerate.LLVM.PTX.Execute.Async
     Data.Array.Accelerate.LLVM.PTX.Execute.Environment
     Data.Array.Accelerate.LLVM.PTX.Execute.Marshal
 

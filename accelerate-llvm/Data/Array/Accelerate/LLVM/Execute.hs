@@ -36,7 +36,7 @@ import Data.Array.Accelerate.LLVM.State
 
 import Data.Array.Accelerate.LLVM.CodeGen.Environment           ( Gamma )
 
-import Data.Array.Accelerate.LLVM.Execute.Async
+import Data.Array.Accelerate.LLVM.Async
 import Data.Array.Accelerate.LLVM.Execute.Environment
 
 -- library
@@ -222,7 +222,7 @@ executeAfun1
     -> a
     -> LLVM arch b
 executeAfun1 afun arrs =
-  streaming (\s -> useRemoteAsync s arrs >> return arrs) (executeOpenAfun1 afun Aempty)
+  executeOpenAfun1 afun Aempty =<< async (\s -> useRemoteAsync s arrs)
 
 
 -- Execute an open array function of one argument
@@ -257,7 +257,8 @@ executeOpenAcc (ExecAcc kernel gamma pacc) aenv stream =
     Unit x                      -> newRemote Z . const =<< travE x
 
     -- Environment manipulation
-    Avar ix                     -> after stream (aprj ix aenv)
+    Avar ix                     -> let AsyncR event arr = aprj ix aenv
+                                   in after stream event >> return arr
     Alet bnd body               -> streaming (executeOpenAcc bnd aenv) (\x -> executeOpenAcc body (aenv `Apush` x) stream)
     Apply f a                   -> streaming (executeOpenAcc a aenv)   (executeOpenAfun1 f aenv)
     Atuple tup                  -> toAtuple <$> travT tup
@@ -336,7 +337,8 @@ executeOpenAcc (ExecAcc kernel gamma pacc) aenv stream =
            -> a
            -> LLVM arch a
     awhile p f a = do
-      a'  <- async stream (return a)
+      e   <- waypoint stream
+      a'  <- return $ AsyncR e a
       r   <- executeOpenAfun1 p aenv a'
       ok  <- indexRemote r 0
       if ok then awhile p f =<< executeOpenAfun1 f aenv a'

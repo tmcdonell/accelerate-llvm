@@ -36,9 +36,9 @@ import Data.Array.Accelerate.Analysis.Match
 import Data.Array.Accelerate.LLVM.State
 import Data.Array.Accelerate.LLVM.Execute
 
+import Data.Array.Accelerate.LLVM.Native.Async
 import Data.Array.Accelerate.LLVM.Native.CodeGen.Fold           ( matchShapeType )
 import Data.Array.Accelerate.LLVM.Native.Compile
-import Data.Array.Accelerate.LLVM.Native.Execute.Async
 import Data.Array.Accelerate.LLVM.Native.Execute.Environment
 import Data.Array.Accelerate.LLVM.Native.Execute.Marshal
 import Data.Array.Accelerate.LLVM.Native.Target

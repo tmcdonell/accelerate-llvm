@@ -33,7 +33,7 @@ import qualified Data.Array.Accelerate.LLVM.Execute.Marshal     as M
 import Data.Array.Accelerate.LLVM.PTX.State
 import Data.Array.Accelerate.LLVM.PTX.Target
 import Data.Array.Accelerate.LLVM.PTX.Array.Data
-import Data.Array.Accelerate.LLVM.PTX.Execute.Async             ( Async(..) )
+import Data.Array.Accelerate.LLVM.PTX.Async                     ( Async, AsyncR(..) )
 import Data.Array.Accelerate.LLVM.PTX.Execute.Event             ( after )
 import Data.Array.Accelerate.LLVM.PTX.Execute.Environment
 import qualified Data.Array.Accelerate.LLVM.PTX.Array.Prim      as Prim
@@ -83,7 +83,7 @@ instance M.Marshalable PTX (Gamma aenv, Aval aenv) where        -- overlaps with
       -- implementation directly.
       --
       sync :: Async a -> IO a
-      sync (Async event arr) = after event stream >> return arr
+      sync (AsyncR event arr) = after event stream >> return arr
 
 instance ArrayElt e => M.Marshalable PTX (ArrayData e) where
   marshal' ptx _ adata = do

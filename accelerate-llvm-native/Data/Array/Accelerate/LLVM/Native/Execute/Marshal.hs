@@ -1,7 +1,6 @@
 {-# LANGUAGE ConstraintKinds       #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE GADTs                 #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverlappingInstances  #-}
 {-# LANGUAGE TypeFamilies          #-}
@@ -27,6 +26,7 @@ module Data.Array.Accelerate.LLVM.Native.Execute.Marshal (
 import Data.Array.Accelerate.LLVM.CodeGen.Environment           ( Gamma, Idx'(..) )
 import qualified Data.Array.Accelerate.LLVM.Execute.Marshal     as M
 
+import Data.Array.Accelerate.LLVM.Native.Async
 import Data.Array.Accelerate.LLVM.Native.Target
 import Data.Array.Accelerate.LLVM.Native.Array.Data
 import Data.Array.Accelerate.LLVM.Native.Execute.Environment
@@ -53,7 +53,9 @@ instance M.Marshalable Native Int where
 instance M.Marshalable Native (Gamma aenv, Aval aenv) where     -- overlaps with instance (a,b)
   marshal' t s (gamma, aenv)
     = fmap DL.concat
-    $ mapM (\(_, Idx' idx) -> M.marshal' t s (aprj idx aenv)) (IM.elems gamma)
+    $ mapM (\(_, Idx' idx) -> M.marshal' t s (sync (aprj idx aenv))) (IM.elems gamma)
+    where
+      sync (AsyncR () arr) = arr
 
 instance ArrayElt e => M.Marshalable Native (ArrayData e) where
   marshal' _ _ adata = return $ marshalR arrayElt adata

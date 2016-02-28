@@ -26,7 +26,7 @@ import Data.Array.Accelerate.Array.Sugar
 import Data.Array.Accelerate.LLVM.State
 import Data.Array.Accelerate.LLVM.Array.Data
 import Data.Array.Accelerate.LLVM.Native.Target
-import Data.Array.Accelerate.LLVM.Native.Execute.Async ()
+import Data.Array.Accelerate.LLVM.Native.Async                  ()
 
 -- standard library
 import Control.Monad.Trans

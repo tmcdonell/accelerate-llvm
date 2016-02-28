@@ -19,13 +19,12 @@ module Data.Array.Accelerate.LLVM.PTX.Array.Data (
 ) where
 
 -- accelerate
-import Data.Array.Accelerate.Array.Sugar                        ( Array(..) )
 import qualified Data.Array.Accelerate.Array.Sugar              as Sugar
-import qualified Data.Array.Accelerate.Array.Representation     as R
 
 import Data.Array.Accelerate.LLVM.Array.Data
+import Data.Array.Accelerate.LLVM.State
 import Data.Array.Accelerate.LLVM.PTX.Target
-import Data.Array.Accelerate.LLVM.PTX.Execute.Async             ()
+import Data.Array.Accelerate.LLVM.PTX.Async                     ()
 import qualified Data.Array.Accelerate.LLVM.PTX.Array.Prim      as Prim
 
 -- standard library
@@ -37,38 +36,37 @@ import Control.Monad.State
 instance Remote PTX where
 
   {-# INLINEABLE allocateRemote #-}
-  allocateRemote sh = do
-    arr <- liftIO $ Sugar.allocateArray sh
-    runArray (Prim.mallocArray (Sugar.size sh)) arr
+  allocateRemote !sh = do
+    arr <- liftIO $! Sugar.allocateArray sh
+    n   <- return $! Sugar.size sh
+    runArray arr (Prim.mallocArray n)
     return arr
 
   {-# INLINEABLE useRemoteR #-}
-  useRemoteR mst arr@(Array sh _) = do
-    let !n = R.size sh
+  useRemoteR !n !mst !adata =
     case mst of
-      Nothing -> runArray (Prim.useArray         n) arr
-      Just st -> runArray (Prim.useArrayAsync st n) arr
+      Nothing -> Prim.useArray         n adata
+      Just st -> Prim.useArrayAsync st n adata
 
   {-# INLINEABLE copyToRemoteR #-}
-  copyToRemoteR from to mst arr = do
+  copyToRemoteR !from !to !mst !adata = do
     case mst of
-      Nothing -> runArray (Prim.pokeArrayR         from to) arr
-      Just st -> runArray (Prim.pokeArrayAsyncR st from to) arr
+      Nothing -> Prim.pokeArrayR         from to adata
+      Just st -> Prim.pokeArrayAsyncR st from to adata
 
   {-# INLINEABLE copyToHostR #-}
-  copyToHostR from to mst arr = do
+  copyToHostR !from !to !mst !adata = do
     case mst of
-      Nothing -> runArray (Prim.peekArrayR         from to) arr
-      Just st -> runArray (Prim.peekArrayAsyncR st from to) arr
+      Nothing -> Prim.peekArrayR         from to adata
+      Just st -> Prim.peekArrayAsyncR st from to adata
 
   {-# INLINEABLE copyToPeerR #-}
-  copyToPeerR = error "copyToPeerR"
-  -- copyToPeerR from to dst mst arr = do
-  --   src <- gets llvmTarget
-  --   liftIO . unless (ptxContext src == ptxContext dst) $
-  --     liftIO $ case mst of
-  --       Nothing -> runArray (Prim.copyArrayPeerR      (ptxContext src) (ptxMemoryTable src) (ptxStreamReservoir src) (ptxContext dst) (ptxMemoryTable dst)    from to) arr
-  --       Just st -> runArray (Prim.copyArrayPeerAsyncR (ptxContext src) (ptxMemoryTable src)                          (ptxContext dst) (ptxMemoryTable dst) st from to) arr
+  copyToPeerR !from !to !dst !mst !adata = do
+    src <- gets llvmTarget
+    unless (ptxContext src == ptxContext dst) $
+      case mst of
+        Nothing -> Prim.copyArrayPeerR      (ptxContext dst) (ptxMemoryTable dst)    from to adata
+        Just st -> Prim.copyArrayPeerAsyncR (ptxContext dst) (ptxMemoryTable dst) st from to adata
 
   {-# INLINEABLE indexRemote #-}
   indexRemote arr i =

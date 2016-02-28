@@ -22,7 +22,7 @@ import Data.Array.Accelerate.Array.Data
 import Data.Array.Accelerate.Array.Sugar
 import qualified Data.Array.Accelerate.Array.Representation     as R
 
-import Data.Array.Accelerate.LLVM.Execute.Async
+import Data.Array.Accelerate.LLVM.Async
 
 -- libraries
 import Data.DList                                               ( DList )

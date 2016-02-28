@@ -53,6 +53,7 @@ Library
 
   other-modules:
     Data.Array.Accelerate.LLVM.Native.Array.Data
+    Data.Array.Accelerate.LLVM.Native.Async
     Data.Array.Accelerate.LLVM.Native.Debug
     Data.Array.Accelerate.LLVM.Native.Execute
     Data.Array.Accelerate.LLVM.Native.State
@@ -72,7 +73,6 @@ Library
 --    Data.Array.Accelerate.LLVM.Native.CodeGen.Permute
 --    Data.Array.Accelerate.LLVM.Native.CodeGen.Transform
 
-    Data.Array.Accelerate.LLVM.Native.Execute.Async
     Data.Array.Accelerate.LLVM.Native.Execute.Environment
     Data.Array.Accelerate.LLVM.Native.Execute.LBS
     Data.Array.Accelerate.LLVM.Native.Execute.Marshal

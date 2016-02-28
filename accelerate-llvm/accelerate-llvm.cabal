@@ -55,6 +55,7 @@ Library
     Data.Array.Accelerate.LLVM.Array.Data
     Data.Array.Accelerate.LLVM.Array.Nursery
     Data.Array.Accelerate.LLVM.Array.Table
+    Data.Array.Accelerate.LLVM.Async
     Data.Array.Accelerate.LLVM.CodeGen
     Data.Array.Accelerate.LLVM.CodeGen.Arithmetic
     Data.Array.Accelerate.LLVM.CodeGen.Array
@@ -74,7 +75,6 @@ Library
     Data.Array.Accelerate.LLVM.CodeGen.Type
     Data.Array.Accelerate.LLVM.Compile
     Data.Array.Accelerate.LLVM.Execute
-    Data.Array.Accelerate.LLVM.Execute.Async
     Data.Array.Accelerate.LLVM.Execute.Environment
     Data.Array.Accelerate.LLVM.Execute.Marshal
     Data.Array.Accelerate.LLVM.State

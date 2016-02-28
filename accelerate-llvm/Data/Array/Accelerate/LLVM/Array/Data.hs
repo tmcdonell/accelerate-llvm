@@ -25,7 +25,6 @@ module Data.Array.Accelerate.LLVM.Array.Data (
   copyToPeer,   copyToPeerAsync,
 
   runIndexArray,
-  runArrays,
   runArray,
 
   module Data.Array.Accelerate.Array.Data,
@@ -34,11 +33,10 @@ module Data.Array.Accelerate.LLVM.Array.Data (
 
 -- accelerate
 import Data.Array.Accelerate.Array.Data
-import Data.Array.Accelerate.Array.Representation               ( size )
-import Data.Array.Accelerate.Array.Sugar                        hiding ( size )
+import Data.Array.Accelerate.Array.Sugar
 
 import Data.Array.Accelerate.LLVM.State
-import Data.Array.Accelerate.LLVM.Execute.Async
+import Data.Array.Accelerate.LLVM.Async
 
 -- standard library
 import Control.Monad
@@ -62,15 +60,23 @@ class Async arch => Remote arch where
   -- necessary without copy-back.
   --
   {-# INLINEABLE useRemoteR #-}
-  useRemoteR :: Maybe (StreamR arch) -> Array sh e -> LLVM arch ()
-  useRemoteR _ _ = return ()
+  useRemoteR :: (ArrayElt e, ArrayPtrs e ~ Ptr a, Storable a, Typeable a, Typeable e)
+             => Int
+             -> Maybe (StreamR arch)
+             -> ArrayData e
+             -> LLVM arch ()
+  useRemoteR _ _ _ = return ()
 
   -- | Upload a section of an array from the host to the remote device. Only the
   -- elements between the given indices (inclusive left, exclusive right) are
   -- transferred.
   --
   {-# INLINEABLE copyToRemoteR #-}
-  copyToRemoteR :: Int -> Int -> Maybe (StreamR arch) -> Array sh e -> LLVM arch ()
+  copyToRemoteR :: (ArrayElt e, ArrayPtrs e ~ Ptr a, Storable a, Typeable a, Typeable e)
+                => Int
+                -> Int
+                -> Maybe (StreamR arch)
+                -> ArrayData e -> LLVM arch ()
   copyToRemoteR _ _ _ _ = return ()
 
   -- | Copy a section of an array from the remote device back to the host. The
@@ -78,7 +84,12 @@ class Async arch => Remote arch where
   -- transferred.
   --
   {-# INLINEABLE copyToHostR #-}
-  copyToHostR :: Int -> Int -> Maybe (StreamR arch) -> Array sh e -> LLVM arch ()
+  copyToHostR :: (ArrayElt e, ArrayPtrs e ~ Ptr a, Storable a, Typeable a, Typeable e)
+              => Int
+              -> Int
+              -> Maybe (StreamR arch)
+              -> ArrayData e
+              -> LLVM arch ()
   copyToHostR _ _ _ _ = return ()
 
   -- | Copy a section of an array between two remote instances of the same type.
@@ -87,7 +98,13 @@ class Async arch => Remote arch where
   -- the given indices (inclusive left, exclusive right) are transferred.
   --
   {-# INLINEABLE copyToPeerR #-}
-  copyToPeerR :: Int -> Int -> arch -> Maybe (StreamR arch) -> Array sh e -> LLVM arch ()
+  copyToPeerR :: (ArrayElt e, ArrayPtrs e ~ Ptr a, Storable a, Typeable a, Typeable e)
+              => Int
+              -> Int
+              -> arch
+              -> Maybe (StreamR arch)
+              -> ArrayData e
+              -> LLVM arch ()
   copyToPeerR _ _ _ _ _ = return ()
 
   -- | Read a single element from the array at a given row-major index
@@ -133,6 +150,10 @@ class Async arch => Remote arch where
 ; dispatcher _                = error "mkPrimDispatcher: not primitive"
 
 
+-- | Allocate a new uninitialised array on the remote device
+--
+
+
 
 -- | Create a new array from its representation on the host, and upload it to
 -- a new remote array.
@@ -152,7 +173,8 @@ newRemote sh f =
 {-# INLINEABLE useRemote #-}
 useRemote :: (Remote arch, Arrays a) => a -> LLVM arch a
 useRemote arrs = do
-  runArrays (useRemoteR Nothing) arrs
+  runArrays arrs $ \arr@Array{} -> let n = size (shape arr)
+                                   in  runArray arr (useRemoteR n Nothing)
   return arrs
 
 -- | Upload an immutable array from the host to the remote device,
@@ -161,16 +183,23 @@ useRemote arrs = do
 {-# INLINEABLE useRemoteAsync #-}
 useRemoteAsync :: (Remote arch, Arrays a) => StreamR arch -> a -> LLVM arch (AsyncR arch a)
 useRemoteAsync stream arrs = do
-  async stream $ do runArrays (useRemoteR (Just stream)) arrs
-                    return arrs
-
+  runArrays arrs $ \arr@Array{} -> do
+    let n = size (shape arr)
+    runArray arr $ \ad          -> do
+      async      $ \s           -> do
+        useRemoteR n (Just s) ad
+        after stream =<< waypoint s
+  --
+  e <- waypoint stream      -- TLM: assuming that adding events to a stream counts as things to wait for
+  return $ AsyncR e arrs
 
 -- | Uploading existing arrays from the host to the remote device
 --
 {-# INLINEABLE copyToRemote #-}
 copyToRemote :: (Remote arch, Arrays a) => a -> LLVM arch a
 copyToRemote arrs = do
-  runArrays (\arr@(Array sh _) -> copyToRemoteR 0 (size sh) Nothing arr) arrs
+  runArrays arrs $ \arr@Array{} -> let n = size (shape arr)
+                                   in runArray arr (copyToRemoteR 0 n Nothing)
   return arrs
 
 -- | Upload an existing array to the remote device, asynchronously.
@@ -178,16 +207,23 @@ copyToRemote arrs = do
 {-# INLINEABLE copyToRemoteAsync #-}
 copyToRemoteAsync :: (Remote arch, Arrays a) => StreamR arch -> a -> LLVM arch (AsyncR arch a)
 copyToRemoteAsync stream arrs = do
-  async stream $ do runArrays (\arr@(Array sh _) -> copyToRemoteR 0 (size sh) (Just stream) arr) arrs
-                    return arrs
-
+  runArrays arrs $ \arr@Array{} -> do
+    let n = size (shape arr)
+    runArray arr $ \ad          -> do
+      async      $ \s           -> do
+        copyToRemoteR 0 n (Just s) ad
+        after stream =<< waypoint s
+  --
+  e <- waypoint stream
+  return $! AsyncR e arrs
 
 -- | Copy an array from the remote device to the host.
 --
 {-# INLINEABLE copyToHost #-}
 copyToHost :: (Remote arch, Arrays a) => a -> LLVM arch a
 copyToHost arrs = do
-  runArrays (\arr@(Array sh _) -> copyToHostR 0 (size sh) Nothing arr) arrs
+  runArrays arrs $ \arr@Array{} -> let n = size (shape arr)
+                                   in  runArray arr (copyToHostR 0 n Nothing)
   return arrs
 
 -- | Copy an array from the remote device to the host, asynchronously
@@ -195,8 +231,16 @@ copyToHost arrs = do
 {-# INLINEABLE copyToHostAsync #-}
 copyToHostAsync :: (Remote arch, Arrays a) => StreamR arch -> a -> LLVM arch (AsyncR arch a)
 copyToHostAsync stream arrs = do
-  async stream $ do runArrays (\arr@(Array sh _) -> copyToHostR 0 (size sh) (Just stream) arr) arrs
-                    return arrs
+  runArrays arrs $ \arr@Array{} -> do
+    let n = size (shape arr)
+    runArray arr $ \ad          -> do
+      async      $ \s           -> do
+        copyToHostR 0 n (Just s) ad
+        after stream =<< waypoint s
+  --
+  e <- waypoint stream
+  return $! AsyncR e arrs
+
 
 -- | Copy arrays between two remote instances of the same type. This may be more
 -- efficient than copying to the host and then to the second remote instance
@@ -205,16 +249,24 @@ copyToHostAsync stream arrs = do
 {-# INLINEABLE copyToPeer #-}
 copyToPeer :: (Remote arch, Arrays a) => arch -> a -> LLVM arch a
 copyToPeer peer arrs = do
-  runArrays (\arr@(Array sh _) -> copyToPeerR 0 (size sh) peer Nothing arr) arrs
+  runArrays arrs $ \arr@Array{} -> let n = size (shape arr)
+                                   in  runArray arr (copyToPeerR 0 n peer Nothing)
   return arrs
 
 -- | As 'copyToPeer', asynchronously.
 --
 {-# INLINEABLE copyToPeerAsync #-}
 copyToPeerAsync :: (Remote arch, Arrays a) => arch -> StreamR arch -> a -> LLVM arch (AsyncR arch a)
-copyToPeerAsync peer stream arrs =
-  async stream $ do runArrays (\arr@(Array sh _) -> copyToPeerR 0 (size sh) peer (Just stream) arr) arrs
-                    return arrs
+copyToPeerAsync peer stream arrs = do
+  runArrays arrs $ \arr@Array{} -> do
+    let n = size (shape arr)
+    runArray arr $ \ad          -> do
+      async      $ \s           -> do
+        copyToPeerR 0 n peer (Just s) ad
+        after stream =<< waypoint s
+  --
+  e <- waypoint stream
+  return $! AsyncR e arrs
 
 
 -- Helpers for traversing the Arrays data structure
@@ -273,10 +325,10 @@ runIndexArray worker (Array _ adata) i = toElt `liftM` indexR arrayElt adata
 {-# INLINE runArrays #-}
 runArrays
     :: forall m arrs. (Monad m, Arrays arrs)
-    => (forall sh e. Array sh e -> m ())
-    -> arrs
+    => arrs
+    -> (forall sh e. Array sh e -> m ())
     -> m ()
-runArrays worker arrs = runR (arrays arrs) (fromArr arrs)
+runArrays arrs worker = runR (arrays arrs) (fromArr arrs)
   where
     runR :: ArraysR a -> a -> m ()
     runR ArraysRunit             ()             = return ()
@@ -290,10 +342,10 @@ runArrays worker arrs = runR (arrays arrs) (fromArr arrs)
 {-# INLINE runArray #-}
 runArray
     :: forall m sh e. Monad m
-    => (forall e' p. (ArrayElt e', ArrayPtrs e' ~ Ptr p, Storable p, Typeable p, Typeable e') => ArrayData e' -> m ())
-    -> Array sh e
+    => Array sh e
+    -> (forall e' p. (ArrayElt e', ArrayPtrs e' ~ Ptr p, Storable p, Typeable p, Typeable e') => ArrayData e' -> m ())
     -> m ()
-runArray worker (Array _ adata) = runR arrayElt adata
+runArray (Array _ adata) worker = runR arrayElt adata
   where
     runR :: ArrayEltR e' -> ArrayData e' -> m ()
     runR ArrayEltRunit             _  = return ()

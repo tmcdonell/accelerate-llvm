@@ -19,7 +19,7 @@ module Data.Array.Accelerate.LLVM.Execute.Environment
 -- accelerate
 import Data.Array.Accelerate.AST
 import Data.Array.Accelerate.Error
-import Data.Array.Accelerate.LLVM.Execute.Async
+import Data.Array.Accelerate.LLVM.Async
 
 
 -- Array environments
