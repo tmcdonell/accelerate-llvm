@@ -132,7 +132,8 @@ executeOp Multi{..} cpu ptx1 ptx2 gamma aval (s1,s2) n args result@Array{} = do
       i32 :: Int -> Int32
       i32 = fromIntegral
 
-  -- Kick off the workers
+  -- Kick off the worker threads
+  --
   liftIO . gangIO monitorGang $ \thread ->
     case thread of
       0 -> goCPU  >> traceIO dump_sched "sched/multi: Native exiting"
@@ -140,12 +141,14 @@ executeOp Multi{..} cpu ptx1 ptx2 gamma aval (s1,s2) n args result@Array{} = do
       2 -> goPTX2 >> traceIO dump_sched "sched/multi: PTX-2 exiting"
       _ -> return ()
 
-  -- Distribute the completed result to the GPUs
-  liftIO . gangIO (CPU.theGang nativeTarget) $ \thread ->
-    case thread of
-      0 -> void $ copyToRemoteAsync s1 result `using` ptxTarget1
-      1 -> void $ copyToRemoteAsync s2 result `using` ptxTarget2
-      _ -> return ()
+  -- At this point, the CPU has a complete copy of the result array, and the
+  -- GPUs only have partial copies. We mark the arrays on each of the devices as
+  -- Evicted. If they are required again as part of a computation, then our LRU
+  -- memory manager will automatically re-uploaded the (now complete) array data
+  -- for us. If not, we avoid a costly (and unnecessary) synchronisation step.
+  --
+  unsafeEvict result `using` ptxTarget1
+  unsafeEvict result `using` ptxTarget2
 
 
 -- syncWith :: (Int -> Int -> IO ()) -> Finalise
