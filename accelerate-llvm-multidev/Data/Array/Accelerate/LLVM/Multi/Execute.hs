@@ -37,7 +37,7 @@ import Data.Array.Accelerate.LLVM.Multi.Compile
 import Data.Array.Accelerate.LLVM.Multi.Execute.Environment
 import Data.Array.Accelerate.LLVM.Multi.Target
 
-import Data.Range.Range                                         ( Range(..), trisect )
+import Data.Range.Range                                         ( Range(..), bisect, trisect )
 import Control.Parallel.Meta
 import Control.Parallel.Meta.Worker
 
@@ -105,7 +105,11 @@ executeOp
     -> IO ()
 executeOp Multi{..} cpu ptx1 ptx2 gamma aval (s1,s2) n args result@Array{} = do
   let -- Initialise each backend with an equal portion of work
-      (u,v,w)      = trisect (IE 0 n)
+      -- (u,v,w)      = trisect (IE 0 n)
+      (u,v,w)
+        | n <= 2*cpuPPT = (IE 0 n, Empty, Empty)
+        | n <= 4*cpuPPT = let (u',v') = bisect (IE 0 n) in (u', v', Empty)
+        | otherwise     = trisect (IE 0 n)
 
       using  = flip PTX.evalPTX
       cpuPPT = 5000
