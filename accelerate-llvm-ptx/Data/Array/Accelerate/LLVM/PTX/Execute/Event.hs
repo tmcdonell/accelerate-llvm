@@ -56,7 +56,7 @@ waypoint :: Stream -> IO Event
 waypoint stream = do
   event <- create
   withLifetime stream $ \s -> do
-  withLifetime event  $ \e -> do
+   withLifetime event  $ \e -> do
     message $ "add waypoint " ++ showEvent e ++ " in stream " ++ showStream s
     Event.record e (Just s)
     return event
