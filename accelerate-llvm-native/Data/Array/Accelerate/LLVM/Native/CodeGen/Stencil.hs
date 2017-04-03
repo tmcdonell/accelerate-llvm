@@ -17,7 +17,7 @@ module Data.Array.Accelerate.LLVM.Native.CodeGen.Stencil
 -- accelerate
 import Data.Array.Accelerate.AST
 import Data.Array.Accelerate.Analysis.Match
-import Data.Array.Accelerate.Array.Sugar                            ( Array, DIM2 )
+import Data.Array.Accelerate.Array.Sugar                            ( Array, DIM2, Shape, Elt )
 import Data.Array.Accelerate.Type
 
 import Data.Array.Accelerate.LLVM.CodeGen.Arithmetic
@@ -40,9 +40,18 @@ import qualified LLVM.AST.Global                                    as LLVM
 
 
 
+  -- stencil       :: (Stencil sh a stencil, Elt b)
+  --               => arch
+  --               -> Gamma aenv
+  --               -> IRFun1 arch aenv (stencil -> b)
+  --               -> Boundary (IR a)
+  --               -> IRManifest arch aenv (Array sh a)
+  --               -> CodeGen (IROpenAcc arch aenv (Array sh b))
+
+
 mkStencil
-    :: forall aenv stencil a b.
-       Gamma aenv
+    :: forall aenv stencil a b sh. (Stencil sh a stencil, Elt b)
+    => Gamma aenv
     -> IRFun1 Native aenv (stencil -> b)
     -> Boundary (IR a)
     -> IRManifest Native aenv (Array sh a)
@@ -69,13 +78,13 @@ mkStencil2D aenv apply =
       (arrOut, paramOut)        = mutableArray ("out" :: Name (Array DIM2 e))
       paramEnv                  = envParam aenv
       --
-      stepx = undefined
-      stepy = undefined
+      stepx = lift (1 :: Int)
+      stepy = lift (1 :: Int)
   in
   makeOpenAcc "stencil2D" (paramGang ++ paramOut ++ paramEnv) $ do
 
-    imapFromStepTo y0 (lift 2) y1 $ \y -> do
-      imapFromStepTo x0 (lift 2) x1 $ \x -> do
+    imapFromStepTo y0 stepx y1 $ \y -> do
+      imapFromStepTo x0 stepy x1 $ \x -> do
 
         -- stencilAccess
 
