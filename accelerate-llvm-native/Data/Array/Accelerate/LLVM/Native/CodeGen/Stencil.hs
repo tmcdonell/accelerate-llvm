@@ -17,7 +17,8 @@ module Data.Array.Accelerate.LLVM.Native.CodeGen.Stencil
 -- accelerate
 import Data.Array.Accelerate.AST
 import Data.Array.Accelerate.Analysis.Match
-import Data.Array.Accelerate.Array.Sugar                            ( Array, DIM2, Shape, Elt )
+import Data.Array.Accelerate.Analysis.Stencil
+import Data.Array.Accelerate.Array.Sugar                            ( Array, DIM2, Shape, Elt, Z(..), (:.)(..) )
 import Data.Array.Accelerate.Type
 
 import Data.Array.Accelerate.LLVM.CodeGen.Arithmetic
@@ -39,16 +40,6 @@ import Data.Array.Accelerate.LLVM.Native.CodeGen.Loop
 import qualified LLVM.AST.Global                                    as LLVM
 
 
-
-  -- stencil       :: (Stencil sh a stencil, Elt b)
-  --               => arch
-  --               -> Gamma aenv
-  --               -> IRFun1 arch aenv (stencil -> b)
-  --               -> Boundary (IR a)
-  --               -> IRManifest arch aenv (Array sh a)
-  --               -> CodeGen (IROpenAcc arch aenv (Array sh b))
-
-
 mkStencil
     :: forall aenv stencil a b sh. (Stencil sh a stencil, Elt b)
     => Gamma aenv
@@ -67,24 +58,47 @@ mkStencil _ _ _ _
 gangParam2D :: (IR Int, IR Int, IR Int, IR Int, [LLVM.Parameter])
 gangParam2D = undefined
 
+
+index1d :: IR Int -> IR Int -> IR Int -> CodeGen (IR Int)
+index1d width x y = add numType x =<< mul numType y width  
+
+
 mkStencil2D
-    :: forall aenv stencil e. (Stencil DIM2 e stencil)
+    :: forall aenv stencil a b sh. (Stencil DIM2 a stencil, Elt b)
     => Gamma aenv
-    -> IRFun1 Native aenv (stencil -> e)
-    -> CodeGen (IROpenAcc Native aenv (Array DIM2 e))
-mkStencil2D aenv apply =
+    -> IRFun1 Native aenv (stencil -> b)
+    -> Boundary (IR a)
+    -> IRManifest Native aenv (Array DIM2 a)
+    -> CodeGen (IROpenAcc Native aenv (Array DIM2 b))
+mkStencil2D aenv apply _ _ =
   let
       (x0,y0,x1,y1, paramGang)  = gangParam2D
-      (arrOut, paramOut)        = mutableArray ("out" :: Name (Array DIM2 e))
+      x0'                       = add numType x0 (lift 1) -- Change 1 to stencil size
+      y0'                       = add numType y0 (lift 1) -- using offsets function
+      x1'                       = sub numType x1 (lift 1)
+      y1'                       = sub numType y1 (lift 1)
+      (arrOut, paramOut)        = mutableArray ("out" :: Name (Array DIM2 b))
       paramEnv                  = envParam aenv
       --
       stepx = lift (1 :: Int)
       stepy = lift (1 :: Int)
+      shapes = offsets (undefined :: Fun aenv (stencil -> b))
+                       (undefined :: OpenAcc aenv (Array DIM2 a))
+      (borderWidth, borderHeight) =
+        case shapes of
+          (Z :. x :. y):_ -> (lift x, lift y)
+          _ -> error "This should never happen (mkStencil2D)."
   in
   makeOpenAcc "stencil2D" (paramGang ++ paramOut ++ paramEnv) $ do
 
+    startx <- x0'
+    starty <- y0'
+    endx   <- x1'
+    endy   <- y1'
+
     imapFromStepTo y0 stepx y1 $ \y -> do
       imapFromStepTo x0 stepy x1 $ \x -> do
+        i <- index1d x1 x y
 
         -- stencilAccess
 
