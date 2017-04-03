@@ -59,10 +59,6 @@ gangParam2D :: (IR Int, IR Int, IR Int, IR Int, [LLVM.Parameter])
 gangParam2D = undefined
 
 
-index1d :: IR Int -> IR Int -> IR Int -> CodeGen (IR Int)
-index1d width x y = add numType x =<< mul numType y width  
-
-
 mkStencil2D
     :: forall aenv stencil a b sh. (Stencil DIM2 a stencil, Elt b)
     => Gamma aenv
@@ -73,10 +69,10 @@ mkStencil2D
 mkStencil2D aenv apply _ _ =
   let
       (x0,y0,x1,y1, paramGang)  = gangParam2D
-      x0'                       = add numType x0 (lift 1) -- Change 1 to stencil size
-      y0'                       = add numType y0 (lift 1) -- using offsets function
-      x1'                       = sub numType x1 (lift 1)
-      y1'                       = sub numType y1 (lift 1)
+      x0'                       = add numType x0 borderWidth
+      y0'                       = add numType y0 borderHeight
+      x1'                       = sub numType x1 borderWidth
+      y1'                       = sub numType y1 borderHeight
       (arrOut, paramOut)        = mutableArray ("out" :: Name (Array DIM2 b))
       paramEnv                  = envParam aenv
       --
@@ -98,7 +94,7 @@ mkStencil2D aenv apply _ _ =
 
     imapFromStepTo y0 stepx y1 $ \y -> do
       imapFromStepTo x0 stepy x1 $ \x -> do
-        i <- index1d x1 x y
+        i <- intOfIndex (irArrayShape arrOut) (undefined `index` x `index` y)
 
         -- stencilAccess
 
