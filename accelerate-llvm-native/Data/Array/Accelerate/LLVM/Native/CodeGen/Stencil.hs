@@ -78,8 +78,8 @@ mkStencil2D aenv f boundary (IRManifest v) =
       (arrOut, paramOut)        = mutableArray ("out" :: Name (Array DIM2 b))
       paramEnv                  = envParam aenv
       --
-      stepx = lift (1 :: Int)
-      stepy = lift (1 :: Int)
+      stepx = int 1
+      stepy = int 1
       shapes = offsets (undefined :: Fun aenv (stencil -> b))
                        (undefined :: OpenAcc aenv (Array DIM2 a))
       (borderWidth, borderHeight) =
@@ -95,8 +95,8 @@ mkStencil2D aenv f boundary (IRManifest v) =
     endy   <- y1'
 
     -- Middle section of matrix.
-    imapFromStepTo y0 stepx y1 $ \y -> do
-      imapFromStepTo x0 stepy x1 $ \x -> do
+    imapFromStepTo starty stepx endy $ \y -> do
+      imapFromStepTo startx stepy endx $ \x -> do
         let ix = (undefined `index` x `index` y)
         i <- intOfIndex (irArrayShape arrOut) ix
         sten <- stencilAccess boundary (irArray (aprj v aenv)) ix
@@ -106,5 +106,22 @@ mkStencil2D aenv f boundary (IRManifest v) =
       return_
 
     -- Edges section of matrix.
-    -- Todo...
+
+    -- Top and bottom (with corners).
+    maxYoffset <- sub numType borderHeight (int 1)
+
+    imapFromTo (int 0) maxYoffset $ \y -> do
+      imapFromTo x0 x1 $ \x -> do
+        return_
+
+    -- Left and right (without corners).
+    maxXoffset <- sub numType borderWidth (int 1)
+    y0noCorners <- add numType y0 borderWidth
+    y1noCorners <- sub numType y1 borderWidth
+
+    imapFromTo y0noCorners y1noCorners $ \y -> do
+      imapFromTo (int 0) maxXoffset $ \x -> do
+        return_
+
+
 
