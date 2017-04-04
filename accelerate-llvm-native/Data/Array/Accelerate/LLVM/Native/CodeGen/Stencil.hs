@@ -16,7 +16,7 @@ module Data.Array.Accelerate.LLVM.Native.CodeGen.Stencil
   where
 
 -- accelerate
-import Data.Array.Accelerate.AST
+import Data.Array.Accelerate.AST                                    hiding (stencilAccess)
 import Data.Array.Accelerate.Analysis.Match
 import Data.Array.Accelerate.Analysis.Stencil
 import Data.Array.Accelerate.Array.Sugar                            ( Array, DIM2, Shape, Elt, Z(..), (:.)(..) )
@@ -68,7 +68,7 @@ mkStencil2D
     -> Boundary (IR a)
     -> IRManifest Native aenv (Array DIM2 a)
     -> CodeGen (IROpenAcc Native aenv (Array DIM2 b))
-mkStencil2D aenv apply _ _ =
+mkStencil2D aenv f boundary (IRManifest v) =
   let
       (x0,y0,x1,y1, paramGang)  = gangParam2D
       x0'                       = add numType x0 borderWidth
@@ -94,14 +94,17 @@ mkStencil2D aenv apply _ _ =
     endx   <- x1'
     endy   <- y1'
 
+    -- Middle section of matrix.
     imapFromStepTo y0 stepx y1 $ \y -> do
       imapFromStepTo x0 stepy x1 $ \x -> do
-        i <- intOfIndex (irArrayShape arrOut) (undefined `index` x `index` y)
+        let ix = (undefined `index` x `index` y)
+        i <- intOfIndex (irArrayShape arrOut) ix
+        sten <- stencilAccess boundary (irArray (aprj v aenv)) ix
+        r <- app1 f sten
+        writeArray arrOut i r
+        return_
+      return_
 
-        -- stencilAccess
-
-        -- writeArray
-        return ()
-
-    return_
+    -- Edges section of matrix.
+    -- Todo...
 
