@@ -86,6 +86,12 @@ mkStencil2D aenv f boundary (IRManifest v) =
         case shapes of
           (Z :. x :. y):_ -> (lift x, lift y)
           _ -> $internalError "mkStencil2D" "2D shape is not 2D"
+      middleElement x y = do
+        let ix = (undefined `index` x `index` y)
+        i <- intOfIndex (irArrayShape arrOut) ix
+        sten <- stencilAccess boundary (irArray (aprj v aenv)) ix -- TODO: replace stencilAccess with non bounds checked version
+        r <- app1 f sten
+        writeArray arrOut i r
   in
   makeOpenAcc "stencil2D" (paramGang ++ paramOut ++ paramEnv) $ do
 
@@ -97,11 +103,7 @@ mkStencil2D aenv f boundary (IRManifest v) =
     -- Middle section of matrix.
     imapFromStepTo starty stepx endy $ \y -> do
       imapFromStepTo startx stepy endx $ \x -> do
-        let ix = (undefined `index` x `index` y)
-        i <- intOfIndex (irArrayShape arrOut) ix
-        sten <- stencilAccess boundary (irArray (aprj v aenv)) ix -- TODO: replace stencilAccess with non bounds checked version
-        r <- app1 f sten
-        writeArray arrOut i r
+        middleElement x y
         return_
       return_
 
