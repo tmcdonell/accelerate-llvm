@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell     #-}
 -- |
 -- Module      : Data.Array.Accelerate.LLVM.Native.CodeGen.Stencil
 -- Copyright   : [2014..2015] Trevor L. McDonell
@@ -20,6 +21,7 @@ import Data.Array.Accelerate.Analysis.Match
 import Data.Array.Accelerate.Analysis.Stencil
 import Data.Array.Accelerate.Array.Sugar                            ( Array, DIM2, Shape, Elt, Z(..), (:.)(..) )
 import Data.Array.Accelerate.Type
+import Data.Array.Accelerate.Error
 
 import Data.Array.Accelerate.LLVM.CodeGen.Arithmetic
 import Data.Array.Accelerate.LLVM.CodeGen.Array
@@ -83,7 +85,7 @@ mkStencil2D aenv apply _ _ =
       (borderWidth, borderHeight) =
         case shapes of
           (Z :. x :. y):_ -> (lift x, lift y)
-          _ -> error "This should never happen (mkStencil2D)."
+          _ -> $internalError "mkStencil2D" "2D shape is not 2D"
   in
   makeOpenAcc "stencil2D" (paramGang ++ paramOut ++ paramEnv) $ do
 
