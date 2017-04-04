@@ -99,19 +99,23 @@ mkStencil2D aenv f boundary (IRManifest v) =
       imapFromStepTo startx stepy endx $ \x -> do
         let ix = (undefined `index` x `index` y)
         i <- intOfIndex (irArrayShape arrOut) ix
-        sten <- stencilAccess boundary (irArray (aprj v aenv)) ix
+        sten <- stencilAccess boundary (irArray (aprj v aenv)) ix -- TODO: replace stencilAccess with non bounds checked version
         r <- app1 f sten
         writeArray arrOut i r
         return_
       return_
 
     -- Edges section of matrix.
+    let boundaryElement x y = undefined
 
     -- Top and bottom (with corners).
     maxYoffset <- sub numType borderHeight (int 1)
 
-    imapFromTo (int 0) maxYoffset $ \y -> do
+    imapFromTo (int 0) maxYoffset $ \ytop -> do
       imapFromTo x0 x1 $ \x -> do
+        ybottom <- sub numType y1 ytop
+        boundaryElement x ytop
+        boundaryElement x ybottom
         return_
 
     -- Left and right (without corners).
@@ -120,7 +124,10 @@ mkStencil2D aenv f boundary (IRManifest v) =
     y1noCorners <- sub numType y1 borderWidth
 
     imapFromTo y0noCorners y1noCorners $ \y -> do
-      imapFromTo (int 0) maxXoffset $ \x -> do
+      imapFromTo (int 0) maxXoffset $ \xleft -> do
+        xright <- sub numType x1 xleft
+        boundaryElement xleft  y
+        boundaryElement xright y
         return_
 
 
