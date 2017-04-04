@@ -86,10 +86,12 @@ mkStencil2D aenv f boundary (IRManifest v) =
         case shapes of
           (Z :. x :. y):_ -> (lift x, lift y)
           _ -> $internalError "mkStencil2D" "2D shape is not 2D"
-      middleElement x y = do
+      middleElement = stencilElement stencilAccess -- TODO: replace stencilAccess with non bounds checked version
+      boundaryElement = stencilElement stencilAccess
+      stencilElement access x y = do
         let ix = (undefined `index` x `index` y)
         i <- intOfIndex (irArrayShape arrOut) ix
-        sten <- stencilAccess boundary (irArray (aprj v aenv)) ix -- TODO: replace stencilAccess with non bounds checked version
+        sten <- access boundary (irArray (aprj v aenv)) ix
         r <- app1 f sten
         writeArray arrOut i r
   in
@@ -108,7 +110,6 @@ mkStencil2D aenv f boundary (IRManifest v) =
       return_
 
     -- Edges section of matrix.
-    let boundaryElement x y = undefined
 
     -- Top and bottom (with corners).
     maxYoffset <- sub numType borderHeight (int 1)
