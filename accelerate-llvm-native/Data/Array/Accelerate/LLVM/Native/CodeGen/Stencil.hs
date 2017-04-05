@@ -61,6 +61,10 @@ gangParam2D :: (IR Int, IR Int, IR Int, IR Int, [LLVM.Parameter])
 gangParam2D = undefined
 
 
+index2D :: IR Int -> IR Int -> IR DIM2
+index2D (IR x) (IR y) = IR (OP_Pair (OP_Pair OP_Unit y) x)
+
+
 mkStencil2D
     :: forall aenv stencil a b sh. (Stencil DIM2 a stencil, Elt b)
     => Gamma aenv
