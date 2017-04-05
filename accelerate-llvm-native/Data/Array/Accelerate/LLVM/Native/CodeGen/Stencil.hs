@@ -156,7 +156,7 @@ mkStencilAll aenv f boundary (IRManifest v) =
       (arrOut, paramOut)        = mutableArray ("out" :: Name (Array sh e))
       paramEnv                  = envParam aenv
   in
-  makeOpenAcc "generate" (paramGang ++ paramOut ++ paramEnv) $ do
+  makeOpenAcc "stencilAll" (paramGang ++ paramOut ++ paramEnv) $ do
 
     imapFromTo start end $ \i -> do
       ix <- indexOfInt (irArrayShape arrOut) i  -- convert to multidimensional index
