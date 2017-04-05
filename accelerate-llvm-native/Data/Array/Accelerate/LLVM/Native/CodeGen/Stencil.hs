@@ -84,8 +84,9 @@ mkStencil2D aenv f boundary (IRManifest v) =
       --
       stepx = int 1
       stepy = int 1
-      shapes = offsets (undefined :: Fun aenv (stencil -> b))
-                       (undefined :: OpenAcc aenv (Array DIM2 a))
+      undef = $internalError "mkStencil2D" "offsets should not evaluate arguments"
+      shapes = offsets (undef :: Fun aenv (stencil -> b))
+                       (undef :: OpenAcc aenv (Array DIM2 a))
       (borderWidth, borderHeight) =
         case shapes of
           (Z :. x :. y):_ -> (lift x, lift y)
