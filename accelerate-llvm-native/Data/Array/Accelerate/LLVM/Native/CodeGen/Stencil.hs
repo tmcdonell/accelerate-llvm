@@ -177,4 +177,5 @@ mkStencilAll aenv f boundary (IRManifest v) =
       sten <- stencilAccess boundary (irArray (aprj v aenv)) ix
       r  <- app1 f sten                         -- apply generator function
       writeArray arrOut i r                     -- store result
-      return_
+    
+    return_
