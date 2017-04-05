@@ -2,6 +2,7 @@
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell     #-}
+{-# LANGUAGE GADTs               #-}
 -- |
 -- Module      : Data.Array.Accelerate.LLVM.Native.CodeGen.Stencil
 -- Copyright   : [2014..2015] Trevor L. McDonell
@@ -23,6 +24,7 @@ import Data.Array.Accelerate.Array.Sugar                            ( Array, DIM
 import Data.Array.Accelerate.Type
 import Data.Array.Accelerate.Error
 
+import Data.Array.Accelerate.LLVM.Analysis.Match
 import Data.Array.Accelerate.LLVM.CodeGen.Arithmetic
 import Data.Array.Accelerate.LLVM.CodeGen.Array
 import Data.Array.Accelerate.LLVM.CodeGen.Base
@@ -39,6 +41,8 @@ import Data.Array.Accelerate.LLVM.Native.CodeGen.Base
 import Data.Array.Accelerate.LLVM.Native.CodeGen.Generate
 import Data.Array.Accelerate.LLVM.Native.CodeGen.Loop
 
+import Data.Array.Accelerate.LLVM.CodeGen.Skeleton
+
 import qualified LLVM.AST.Global                                    as LLVM
 
 
@@ -49,12 +53,12 @@ mkStencil
     -> Boundary (IR a)
     -> IRManifest Native aenv (Array sh a)
     -> CodeGen (IROpenAcc Native aenv (Array sh b))
-mkStencil _ _ _ _
-  -- | Just Refl <- matchShapeType ...
-  -- = mkStencil2D undefined undefined undefined
+mkStencil
+  | Just Refl <- matchShapeType (undefined :: DIM2) (undefined :: sh)
+  = mkStencil2D
 
   | otherwise
-  = undefined
+  = mkStencilAll
 
 
 gangParam2D :: (IR Int, IR Int, IR Int, IR Int, [LLVM.Parameter])
@@ -66,7 +70,7 @@ index2D (IR x) (IR y) = IR (OP_Pair (OP_Pair OP_Unit y) x)
 
 
 mkStencil2D
-    :: forall aenv stencil a b sh. (Stencil DIM2 a stencil, Elt b)
+    :: forall aenv stencil a b. (Stencil DIM2 a stencil, Elt b)
     => Gamma aenv
     -> IRFun1 Native aenv (stencil -> b)
     -> Boundary (IR a)
@@ -139,4 +143,12 @@ mkStencil2D aenv f boundary (IRManifest v) =
         return_
 
 
-
+mkStencilAll
+    :: forall aenv stencil a b sh. (Stencil sh a stencil, Elt b)
+    => Gamma aenv
+    -> IRFun1 Native aenv (stencil -> b)
+    -> Boundary (IR a)
+    -> IRManifest Native aenv (Array sh a)
+    -> CodeGen (IROpenAcc Native aenv (Array sh b))
+mkStencilAll =
+  undefined
