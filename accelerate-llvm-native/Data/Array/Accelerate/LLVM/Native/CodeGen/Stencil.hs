@@ -64,10 +64,10 @@ mkStencil
 gangParam2D :: (IR Int, IR Int, IR Int, IR Int, [LLVM.Parameter])
 gangParam2D =
   let t      = scalarType
-      startx = "ix0.start" -- I have no idea what these should
-      endx   = "ix0.end"   -- but I'm pretty sure this will give
-      starty = "ix1.start" -- correct results once they're fixed.
-      endy   = "ix1.end"
+      startx = "ix.start"
+      endx   = "ix.end"
+      starty = "iy.start"
+      endy   = "iy.end"
   in
     ( local t startx
     , local t starty
