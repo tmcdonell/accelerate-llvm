@@ -93,10 +93,10 @@ mkStencil2D aenv f boundary (IRManifest v) =
       middleElement = stencilElement stencilAccess -- TODO: replace stencilAccess with non bounds checked version
       boundaryElement = stencilElement stencilAccess
       stencilElement access x y = do
-        let ix = (undefined `index` x `index` y)
-        i <- intOfIndex (irArrayShape arrOut) ix
-        sten <- access boundary (irArray (aprj v aenv)) ix
-        r <- app1 f sten
+        let ix = index2D x y
+        i     <- intOfIndex (irArrayShape arrOut) ix
+        sten  <- access boundary (irArray (aprj v aenv)) ix
+        r     <- app1 f sten
         writeArray arrOut i r
   in
   makeOpenAcc "stencil2D" (paramGang ++ paramOut ++ paramEnv) $ do
