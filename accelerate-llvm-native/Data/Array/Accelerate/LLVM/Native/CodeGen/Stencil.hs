@@ -62,7 +62,23 @@ mkStencil
 
 
 gangParam2D :: (IR Int, IR Int, IR Int, IR Int, [LLVM.Parameter])
-gangParam2D = undefined
+gangParam2D =
+  let t      = scalarType
+      startx = "ix0.start" -- I have no idea what these should
+      endx   = "ix0.end"   -- but I'm pretty sure this will give
+      starty = "ix1.start" -- correct results once they're fixed.
+      endy   = "ix1.end"
+  in
+    ( local t startx
+    , local t starty
+    , local t endx
+    , local t endy
+    , [ scalarParameter t startx
+      , scalarParameter t starty
+      , scalarParameter t endx
+      , scalarParameter t endy
+      ]
+    )
 
 
 index2D :: IR Int -> IR Int -> IR DIM2
@@ -115,8 +131,6 @@ mkStencil2D aenv f boundary (IRManifest v) =
     imapFromStepTo starty stepx endy $ \y -> do
       imapFromStepTo startx stepy endx $ \x -> do
         middleElement x y
-        return_
-      return_
 
     -- Edges section of matrix.
 
@@ -128,7 +142,6 @@ mkStencil2D aenv f boundary (IRManifest v) =
         ybottom <- sub numType y1 ytop
         boundaryElement x ytop
         boundaryElement x ybottom
-        return_
 
     -- Left and right (without corners).
     maxXoffset <- sub numType borderWidth (int 1)
@@ -140,7 +153,8 @@ mkStencil2D aenv f boundary (IRManifest v) =
         xright <- sub numType x1 xleft
         boundaryElement xleft  y
         boundaryElement xright y
-        return_
+
+    return_
 
 
 mkStencilAll
