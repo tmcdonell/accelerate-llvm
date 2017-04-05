@@ -150,5 +150,17 @@ mkStencilAll
     -> Boundary (IR a)
     -> IRManifest Native aenv (Array sh a)
     -> CodeGen (IROpenAcc Native aenv (Array sh b))
-mkStencilAll =
-  undefined
+mkStencilAll aenv f boundary (IRManifest v) =
+  let
+      (start, end, paramGang)   = gangParam
+      (arrOut, paramOut)        = mutableArray ("out" :: Name (Array sh e))
+      paramEnv                  = envParam aenv
+  in
+  makeOpenAcc "generate" (paramGang ++ paramOut ++ paramEnv) $ do
+
+    imapFromTo start end $ \i -> do
+      ix <- indexOfInt (irArrayShape arrOut) i  -- convert to multidimensional index
+      sten <- stencilAccess boundary (irArray (aprj v aenv)) ix
+      r  <- app1 f sten                         -- apply generator function
+      writeArray arrOut i r                     -- store result
+      return_
