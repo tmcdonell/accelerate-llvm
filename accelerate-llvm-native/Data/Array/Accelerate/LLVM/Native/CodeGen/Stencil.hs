@@ -111,12 +111,12 @@ mkStencil2D aenv f boundary (IRManifest v) =
         case shapes of
           (Z :. x :. y):_ -> (lift x, lift y)
           _ -> $internalError "mkStencil2D" "2D shape is not 2D"
-      middleElement = stencilElement stencilAccess -- TODO: replace stencilAccess with non bounds checked version
-      boundaryElement = stencilElement stencilAccess
+      middleElement = stencilElement (stencilAccess Nothing)
+      boundaryElement = stencilElement (stencilAccess $ Just boundary)
       stencilElement access x y = do
         let ix = index2D x y
         i     <- intOfIndex (irArrayShape arrOut) ix
-        sten  <- access boundary (irArray (aprj v aenv)) ix
+        sten  <- access (irArray (aprj v aenv)) ix
         r     <- app1 f sten
         writeArray arrOut i r
   in
@@ -174,7 +174,7 @@ mkStencilAll aenv f boundary (IRManifest v) =
 
     imapFromTo start end $ \i -> do
       ix <- indexOfInt (irArrayShape arrOut) i  -- convert to multidimensional index
-      sten <- stencilAccess boundary (irArray (aprj v aenv)) ix
+      sten <- stencilAccess (Just boundary) (irArray (aprj v aenv)) ix
       r  <- app1 f sten                         -- apply generator function
       writeArray arrOut i r                     -- store result
     
