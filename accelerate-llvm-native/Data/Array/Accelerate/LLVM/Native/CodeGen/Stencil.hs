@@ -59,7 +59,7 @@ mkStencil
   = mkStencil2D
 
   | otherwise
-  = mkStencilAll
+  = defaultStencil1
 
 
 gangParam2D :: (IR Int, IR Int, IR Int, IR Int, [LLVM.Parameter])
