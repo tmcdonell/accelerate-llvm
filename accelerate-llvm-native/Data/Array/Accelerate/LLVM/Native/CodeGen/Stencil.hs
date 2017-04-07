@@ -47,8 +47,9 @@ import qualified LLVM.AST.Global                                    as LLVM
 
 
 mkStencil
-    :: forall aenv stencil a b sh. (Stencil sh a stencil, Elt b)
-    => Gamma aenv
+    :: forall aenv stencil a b sh arch. (Stencil sh a stencil, Elt b, Skeleton arch)
+    => arch
+    -> Gamma aenv
     -> IRFun1 Native aenv (stencil -> b)
     -> Boundary (IR a)
     -> IRManifest Native aenv (Array sh a)
@@ -86,13 +87,14 @@ index2D (IR x) (IR y) = IR (OP_Pair (OP_Pair OP_Unit y) x)
 
 
 mkStencil2D
-    :: forall aenv stencil a b. (Stencil DIM2 a stencil, Elt b)
-    => Gamma aenv
+    :: forall aenv stencil a b arch. (Stencil DIM2 a stencil, Elt b, Skeleton arch)
+    => arch
+    -> Gamma aenv
     -> IRFun1 Native aenv (stencil -> b)
     -> Boundary (IR a)
     -> IRManifest Native aenv (Array DIM2 a)
     -> CodeGen (IROpenAcc Native aenv (Array DIM2 b))
-mkStencil2D aenv f boundary (IRManifest v) =
+mkStencil2D _ aenv f boundary (IRManifest v) =
   let
       (x0,y0,x1,y1, paramGang)  = gangParam2D
       x0'                       = add numType x0 borderWidth
@@ -158,13 +160,14 @@ mkStencil2D aenv f boundary (IRManifest v) =
 
 
 mkStencilAll
-    :: forall aenv stencil a b sh. (Stencil sh a stencil, Elt b)
-    => Gamma aenv
+    :: forall aenv stencil a b sh arch. (Stencil sh a stencil, Elt b, Skeleton arch)
+    => arch
+    -> Gamma aenv
     -> IRFun1 Native aenv (stencil -> b)
     -> Boundary (IR a)
     -> IRManifest Native aenv (Array sh a)
     -> CodeGen (IROpenAcc Native aenv (Array sh b))
-mkStencilAll aenv f boundary (IRManifest v) =
+mkStencilAll _ aenv f boundary (IRManifest v) =
   let
       (start, end, paramGang)   = gangParam
       (arrOut, paramOut)        = mutableArray ("out" :: Name (Array sh e))
