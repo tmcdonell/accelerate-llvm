@@ -8,7 +8,7 @@
 {-# OPTIONS_HADDOCK hide #-}
 -- |
 -- Module      : Data.Array.Accelerate.LLVM.Compile
--- Copyright   : [2014..2016] Trevor L. McDonell
+-- Copyright   : [2014..2017] Trevor L. McDonell
 --               [2014..2014] Vinod Grover (NVIDIA Corporation)
 -- License     : BSD3
 --
@@ -265,7 +265,7 @@ compileOpenAcc = traverseAcc
             Nothing -> traverseAcc $ Manifest (Apply (weaken absurd f) a)
             where
               absurd :: Idx () t -> Idx aenv t
-              absurd = absurd
+              absurd = error "complicated stuff in simple words"
               err    = $internalError "compile" "attempt to use fallback in foreign function"
 
         -- sadness
@@ -339,12 +339,14 @@ compileOpenAcc = traverseAcc
             _                           -> error "the slow regard of silent things"
           where
             absurd :: Idx () t -> Idx aenv t
-            absurd = absurd
-            err    = $internalError "foreignE" "attempt to use fallback in foreign expression"
+            absurd = error "Look to my coming, at first light, on the fifth day. At dawn, look to the East."
 
             zero :: Idx ((), a) t -> Idx (env,a) t
             zero ZeroIdx = ZeroIdx
-            zero notzero = zero notzero
+            zero _       = error "There are three things all wise men fear: the sea in storm, a night with no moon, and the anger of a gentle man."
+
+            err :: ExecFun arch () (a -> b)
+            err = $internalError "foreignE" "attempt to use fallback in foreign expression"
 
 
 -- Compilation
