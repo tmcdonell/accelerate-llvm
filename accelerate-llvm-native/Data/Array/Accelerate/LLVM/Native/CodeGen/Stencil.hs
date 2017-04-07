@@ -47,8 +47,8 @@ import qualified LLVM.AST.Global                                    as LLVM
 
 
 mkStencil
-    :: forall aenv stencil a b sh arch. (Stencil sh a stencil, Elt b, Skeleton arch)
-    => arch
+    :: forall aenv stencil a b sh. (Stencil sh a stencil, Elt b, Skeleton Native)
+    => Native
     -> Gamma aenv
     -> IRFun1 Native aenv (stencil -> b)
     -> Boundary (IR a)
@@ -87,8 +87,8 @@ index2D (IR x) (IR y) = IR (OP_Pair (OP_Pair OP_Unit y) x)
 
 
 mkStencil2D
-    :: forall aenv stencil a b arch. (Stencil DIM2 a stencil, Elt b, Skeleton arch)
-    => arch
+    :: forall aenv stencil a b. (Stencil DIM2 a stencil, Elt b, Skeleton Native)
+    => Native
     -> Gamma aenv
     -> IRFun1 Native aenv (stencil -> b)
     -> Boundary (IR a)
@@ -160,8 +160,8 @@ mkStencil2D _ aenv f boundary (IRManifest v) =
 
 
 mkStencilAll
-    :: forall aenv stencil a b sh arch. (Stencil sh a stencil, Elt b, Skeleton arch)
-    => arch
+    :: forall aenv stencil a b sh. (Stencil sh a stencil, Elt b, Skeleton Native)
+    => Native
     -> Gamma aenv
     -> IRFun1 Native aenv (stencil -> b)
     -> Boundary (IR a)
