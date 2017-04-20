@@ -455,15 +455,40 @@ permuteOp NativeR{..} gamma aenv () inplace shIn dfs = do
 
 
 stencil1Op
-    :: (Shape sh, Elt b)
+    :: forall aenv a b sh. (Shape sh, Elt b)
     => ExecutableR Native
     -> Gamma aenv
     -> Aval aenv
     -> Stream
     -> Array sh a
     -> LLVM Native (Array sh b)
-stencil1Op kernel gamma aenv stream arr =
+stencil1Op
+  | Just Refl <- matchShapeType (undefined :: DIM2) (undefined :: sh)
+  = stencil12DOp
+  --
+  | otherwise
+  = stencil1AllOp
+
+stencil1AllOp
+    :: forall aenv a b sh. (Shape sh, Elt b)
+    => ExecutableR Native
+    -> Gamma aenv
+    -> Aval aenv
+    -> Stream
+    -> Array sh a
+    -> LLVM Native (Array sh b)
+stencil1AllOp kernel gamma aenv stream arr =
   simpleOp kernel gamma aenv stream (shape arr)
+
+stencil12DOp
+    :: forall aenv a b. (Shape DIM2, Elt b)
+    => ExecutableR Native
+    -> Gamma aenv
+    -> Aval aenv
+    -> Stream
+    -> Array DIM2 a
+    -> LLVM Native (Array DIM2 b)
+stencil12DOp = undefined
 
 stencil2Op
     :: (Shape sh, Elt c)
