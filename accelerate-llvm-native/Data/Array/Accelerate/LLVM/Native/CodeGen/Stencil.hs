@@ -217,7 +217,22 @@ mkStencil2DLeftRight
     -> IRManifest Native aenv (Array DIM2 a)
     -> CodeGen (IROpenAcc Native aenv (Array DIM2 b))
 mkStencil2DLeftRight _ aenv f boundary (IRManifest v) =
-  undefined
+  let
+      (start, end, paramGang)   = gangParam
+      (arrOut, paramOut)        = mutableArray ("out" :: Name (Array DIM2 b))
+      paramEnv                  = envParam aenv
+      maxBorderOffsetWidth      = local           scalarType ("ix.maxBorderOffsetWidth" :: Name Int)
+      height                    = local           scalarType ("ix.height"               :: Name Int)
+      paramMaxBorderOffsetWidth = scalarParameter scalarType ("ix.maxBorderOffsetWidth" :: Name Int)
+      paramHeight               = scalarParameter scalarType ("ix.height"               :: Name Int)
+  in
+  makeOpenAcc "stencil2DLeftRight" (paramGang ++
+                                    paramMaxBorderOffsetWidth :
+                                    paramHeight :
+                                    paramOut ++
+                                    paramEnv) $ do
+    return_
+
 
 
 mkStencil2DTopBottom
