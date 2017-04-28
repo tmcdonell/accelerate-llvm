@@ -488,7 +488,7 @@ stencil12DOp
     -> Stream
     -> Array DIM2 a
     -> LLVM Native (Array DIM2 b)
-stencil12DOp kernel gamma aenv stream arr = do
+stencil12DOp kernel@NativeR{..} gamma aenv stream arr = do
   Native{..} <- gets llvmTarget
   let
       ncpu = gangSize
@@ -496,7 +496,12 @@ stencil12DOp kernel gamma aenv stream arr = do
   if ncpu == 1
     then liftIO $ do
       -- Sequential stencil operation
-      return undefined
+      out <- undefined
+      --
+      execute executableR "stencil2D" $ \f -> do
+        undefined
+      --
+      return out
 
     else
       -- Parallel stencil operation

@@ -203,8 +203,8 @@ mkStencil2DMiddle _ aenv f boundary ir@(IRManifest v) =
       paramEnv                 = envParam aenv
   in
   makeOpenAcc "stencil2DMiddle" (paramGang ++ paramOut ++ paramEnv) $ do
-    imapFromTo y0 y1 $ \y -> do
-      imapFromTo x0 x1 $ \x -> do
+    imapFromTo y0 y1 $ \y ->
+      imapFromTo x0 x1 $ \x ->
         middleElement aenv f boundary ir x y
 
 
