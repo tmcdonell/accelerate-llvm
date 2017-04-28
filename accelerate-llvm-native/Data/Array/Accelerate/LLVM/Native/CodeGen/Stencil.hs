@@ -86,6 +86,43 @@ index2D :: IR Int -> IR Int -> IR DIM2
 index2D (IR x) (IR y) = IR (OP_Pair (OP_Pair OP_Unit y) x)
 
 
+stencilElement
+    :: forall aenv stencil a b. (Stencil DIM2 a stencil, Elt b, Skeleton Native)
+    => (IRArray (Array DIM2 a) -> IR DIM2 -> CodeGen (IR stencil))
+    -> Gamma aenv
+    -> IRFun1 Native aenv (stencil -> b)
+    -> Boundary (IR a)
+    -> IRManifest Native aenv (Array DIM2 a)
+    -> IR Int
+    -> IR Int
+    -> CodeGen ()
+stencilElement access aenv f boundary (IRManifest v) x y =
+  let
+    arrOut = undefined
+  in do
+  let ix = index2D x y
+  i     <- intOfIndex (irArrayShape arrOut) ix
+  sten  <- access (irArray (aprj v aenv)) ix
+  r     <- app1 f sten
+  writeArray arrOut i r
+  return undefined
+
+
+middleElement, boundaryElement
+    :: forall aenv stencil a b. (Stencil DIM2 a stencil, Elt b, Skeleton Native)
+    => Gamma aenv
+    -> IRFun1 Native aenv (stencil -> b)
+    -> Boundary (IR a)
+    -> IRManifest Native aenv (Array DIM2 a)
+    -> IR Int
+    -> IR Int
+    -> CodeGen ()
+middleElement =
+  stencilElement (stencilAccess Nothing)
+boundaryElement aenv f boundary =
+  stencilElement (stencilAccess $ Just boundary) aenv f boundary
+
+
 mkStencil2D
     :: forall aenv stencil a b. (Stencil DIM2 a stencil, Elt b, Skeleton Native)
     => Native
@@ -113,14 +150,6 @@ mkStencil2D _ aenv f boundary (IRManifest v) =
         case shapes of
           (Z :. x :. y):_ -> (lift x, lift y)
           _ -> $internalError "mkStencil2D" "2D shape is not 2D"
-      middleElement = stencilElement (stencilAccess Nothing)
-      boundaryElement = stencilElement (stencilAccess $ Just boundary)
-      stencilElement access x y = do
-        let ix = index2D x y
-        i     <- intOfIndex (irArrayShape arrOut) ix
-        sten  <- access (irArray (aprj v aenv)) ix
-        r     <- app1 f sten
-        writeArray arrOut i r
   in
   makeOpenAcc "stencil2D" (paramGang ++ paramOut ++ paramEnv) $ do
 
@@ -132,7 +161,7 @@ mkStencil2D _ aenv f boundary (IRManifest v) =
     -- Middle section of matrix.
     imapFromStepTo starty stepx endy $ \y -> do
       imapFromStepTo startx stepy endx $ \x -> do
-        middleElement x y
+        middleElement aenv f boundary (IRManifest v) x y
 
     -- Edges section of matrix.
 
@@ -142,8 +171,8 @@ mkStencil2D _ aenv f boundary (IRManifest v) =
     imapFromTo (int 0) maxYoffset $ \ytop -> do
       imapFromTo x0 x1 $ \x -> do
         ybottom <- sub numType y1 ytop
-        boundaryElement x ytop
-        boundaryElement x ybottom
+        boundaryElement aenv f boundary (IRManifest v) x ytop
+        boundaryElement aenv f boundary (IRManifest v) x ybottom
 
     -- Left and right (without corners).
     maxXoffset <- sub numType borderWidth (int 1)
@@ -153,8 +182,8 @@ mkStencil2D _ aenv f boundary (IRManifest v) =
     imapFromTo y0noCorners y1noCorners $ \y -> do
       imapFromTo (int 0) maxXoffset $ \xleft -> do
         xright <- sub numType x1 xleft
-        boundaryElement xleft  y
-        boundaryElement xright y
+        boundaryElement aenv f boundary (IRManifest v) xleft  y
+        boundaryElement aenv f boundary (IRManifest v) xright y
 
     return_
 
