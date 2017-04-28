@@ -230,6 +230,7 @@ mkStencil2DLeftRight _ aenv f boundary ir@(IRManifest v) =
   in
   makeOpenAcc "stencil2DLeftRight" (paramGang ++
                                     paramMaxBorderOffsetWidth :
+                                    paramWidth :
                                     paramHeight :
                                     paramOut ++
                                     paramEnv) $ do
