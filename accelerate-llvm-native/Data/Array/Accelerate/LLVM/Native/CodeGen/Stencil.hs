@@ -157,4 +157,39 @@ mkStencil2D _ aenv f boundary (IRManifest v) =
         boundaryElement xright y
 
     return_
-    
+
+
+mkStencil2DMiddle
+    :: forall aenv stencil a b. (Stencil DIM2 a stencil, Elt b, Skeleton Native)
+    => Native
+    -> Gamma aenv
+    -> IRFun1 Native aenv (stencil -> b)
+    -> Boundary (IR a)
+    -> IRManifest Native aenv (Array DIM2 a)
+    -> CodeGen (IROpenAcc Native aenv (Array DIM2 b))
+mkStencil2DMiddle _ aenv f boundary (IRManifest v) =
+  undefined
+
+
+mkStencil2DLeftRight
+    :: forall aenv stencil a b. (Stencil DIM2 a stencil, Elt b, Skeleton Native)
+    => Native
+    -> Gamma aenv
+    -> IRFun1 Native aenv (stencil -> b)
+    -> Boundary (IR a)
+    -> IRManifest Native aenv (Array DIM2 a)
+    -> CodeGen (IROpenAcc Native aenv (Array DIM2 b))
+mkStencil2DLeftRight _ aenv f boundary (IRManifest v) =
+  undefined
+
+
+mkStencil2DTopBottom
+    :: forall aenv stencil a b. (Stencil DIM2 a stencil, Elt b, Skeleton Native)
+    => Native
+    -> Gamma aenv
+    -> IRFun1 Native aenv (stencil -> b)
+    -> Boundary (IR a)
+    -> IRManifest Native aenv (Array DIM2 a)
+    -> CodeGen (IROpenAcc Native aenv (Array DIM2 b))
+mkStencil2DTopBottom _ aenv f boundary (IRManifest v) =
+  undefined
