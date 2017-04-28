@@ -196,8 +196,16 @@ mkStencil2DMiddle
     -> Boundary (IR a)
     -> IRManifest Native aenv (Array DIM2 a)
     -> CodeGen (IROpenAcc Native aenv (Array DIM2 b))
-mkStencil2DMiddle _ aenv f boundary (IRManifest v) =
-  undefined
+mkStencil2DMiddle _ aenv f boundary ir@(IRManifest v) =
+  let
+      (x0,y0,x1,y1, paramGang) = gangParam2D
+      (arrOut, paramOut)       = mutableArray ("out" :: Name (Array DIM2 b))
+      paramEnv                 = envParam aenv
+  in
+  makeOpenAcc "stencil2DMiddle" (paramGang ++ paramOut ++ paramEnv) $ do
+    imapFromTo y0 y1 $ \y -> do
+      imapFromTo x0 x1 $ \x -> do
+        middleElement aenv f boundary ir x y
 
 
 mkStencil2DLeftRight
