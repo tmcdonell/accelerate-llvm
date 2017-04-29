@@ -120,19 +120,16 @@ stencilElement
     -> IRFun1 Native aenv (stencil -> b)
     -> Boundary (IR a)
     -> IRManifest Native aenv (Array DIM2 a)
+    -> IRArray (Array DIM2 b)
     -> IR Int
     -> IR Int
     -> CodeGen ()
-stencilElement access aenv f boundary (IRManifest v) x y =
-  let
-    arrOut = undefined
-  in do
+stencilElement access aenv f boundary (IRManifest v) arrOut x y = do
   let ix = index2D x y
   i     <- intOfIndex (irArrayShape arrOut) ix
   sten  <- access (irArray (aprj v aenv)) ix
   r     <- app1 f sten
   writeArray arrOut i r
-  return undefined
 
 
 middleElement, boundaryElement
@@ -141,6 +138,7 @@ middleElement, boundaryElement
     -> IRFun1 Native aenv (stencil -> b)
     -> Boundary (IR a)
     -> IRManifest Native aenv (Array DIM2 a)
+    -> IRArray (Array DIM2 b)
     -> IR Int
     -> IR Int
     -> CodeGen ()
@@ -182,7 +180,7 @@ mkStencil2DMiddle _ aenv f boundary ir@(IRManifest v) =
   makeOpenAcc "stencil2DMiddle" (paramGang ++ paramOut ++ paramEnv) $ do
     imapFromTo y0 y1 $ \y ->
       imapFromTo x0 x1 $ \x ->
-        middleElement aenv f boundary ir x y
+        middleElement aenv f boundary ir arrOut x y
 
 
 mkStencil2DLeftRight
@@ -204,9 +202,9 @@ mkStencil2DLeftRight _ aenv f boundary ir@(IRManifest v) =
       rightx <- sub numType width =<< add numType (int 1) maxBorderOffsetWidth
       imapFromTo start end $ \y -> do
         -- Left
-        boundaryElement aenv f boundary ir x y
+        boundaryElement aenv f boundary ir arrOut x y
         -- Right
-        boundaryElement aenv f boundary ir rightx y
+        boundaryElement aenv f boundary ir arrOut rightx y
 
 
 
@@ -229,6 +227,6 @@ mkStencil2DTopBottom _ aenv f boundary ir@(IRManifest v) =
       bottomy <- sub numType height =<< add numType (int 1) maxBorderOffsetHeight
       imapFromTo start end $ \x -> do
         -- Top
-        boundaryElement aenv f boundary ir x y
+        boundaryElement aenv f boundary ir arrOut x y
         -- Bottom
-        boundaryElement aenv f boundary ir x bottomy
+        boundaryElement aenv f boundary ir arrOut x bottomy
