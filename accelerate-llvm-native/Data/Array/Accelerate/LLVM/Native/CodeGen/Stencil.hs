@@ -158,61 +158,11 @@ mkStencil2D
     -> Boundary (IR a)
     -> IRManifest Native aenv (Array DIM2 a)
     -> CodeGen (IROpenAcc Native aenv (Array DIM2 b))
-mkStencil2D _ aenv f boundary (IRManifest v) =
-  let
-      (x0,y0,x1,y1, paramGang)  = gangParam2D
-      x0'                       = add numType x0 borderWidth
-      y0'                       = add numType y0 borderHeight
-      x1'                       = sub numType x1 borderWidth
-      y1'                       = sub numType y1 borderHeight
-      (arrOut, paramOut)        = mutableArray ("out" :: Name (Array DIM2 b))
-      paramEnv                  = envParam aenv
-      --
-      stepx = int 1
-      stepy = int 1
-      undef = $internalError "mkStencil2D" "offsets should not evaluate arguments"
-      shapes = offsets (undef :: Fun aenv (stencil -> b))
-                       (undef :: OpenAcc aenv (Array DIM2 a))
-      (borderWidth, borderHeight) =
-        case shapes of
-          (Z :. x :. y):_ -> (lift x, lift y)
-          _ -> $internalError "mkStencil2D" "2D shape is not 2D"
-  in
-  makeOpenAcc "stencil2D" (paramGang ++ paramOut ++ paramEnv) $ do
-
-    startx <- x0'
-    starty <- y0'
-    endx   <- x1'
-    endy   <- y1'
-
-    -- Middle section of matrix.
-    imapFromStepTo starty stepx endy $ \y -> do
-      imapFromStepTo startx stepy endx $ \x -> do
-        middleElement aenv f boundary (IRManifest v) x y
-
-    -- Edges section of matrix.
-
-    -- Top and bottom (with corners).
-    maxYoffset <- sub numType borderHeight (int 1)
-
-    imapFromTo (int 0) maxYoffset $ \ytop -> do
-      imapFromTo x0 x1 $ \x -> do
-        ybottom <- sub numType y1 ytop
-        boundaryElement aenv f boundary (IRManifest v) x ytop
-        boundaryElement aenv f boundary (IRManifest v) x ybottom
-
-    -- Left and right (without corners).
-    maxXoffset <- sub numType borderWidth (int 1)
-    y0noCorners <- add numType y0 borderWidth
-    y1noCorners <- sub numType y1 borderWidth
-
-    imapFromTo y0noCorners y1noCorners $ \y -> do
-      imapFromTo (int 0) maxXoffset $ \xleft -> do
-        xright <- sub numType x1 xleft
-        boundaryElement aenv f boundary (IRManifest v) xleft  y
-        boundaryElement aenv f boundary (IRManifest v) xright y
-
-    return_
+mkStencil2D n aenv f boundary ir =
+  foldr1 (+++) <$> sequence [ mkStencil2DLeftRight n aenv f boundary ir
+                            , mkStencil2DTopBottom n aenv f boundary ir
+                            , mkStencil2DMiddle    n aenv f boundary ir
+                            ]
 
 
 mkStencil2DMiddle
@@ -268,7 +218,7 @@ mkStencil2DTopBottom
     -> Boundary (IR a)
     -> IRManifest Native aenv (Array DIM2 a)
     -> CodeGen (IROpenAcc Native aenv (Array DIM2 b))
-mkStencil2DTopBottom _ aenv f boundary (IRManifest v) =
+mkStencil2DTopBottom _ aenv f boundary ir@(IRManifest v) =
   let
       (start, end, _, maxBorderOffsetHeight, _, height, paramGang) = gangParam2DSides
       (arrOut, paramOut) = mutableArray ("out" :: Name (Array DIM2 b))
