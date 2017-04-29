@@ -498,7 +498,13 @@ stencil12DOp kernel@NativeR{..} gamma aenv stream arr = do
       -- Sequential stencil operation
       out <- undefined
       --
-      execute executableR "stencil2D" $ \f -> do
+      execute executableR "stencil2DMiddle" $ \f ->
+        undefined
+      -- Include the corners in these sides.
+      execute executableR "stencil2DLeftRight" $ \f ->
+        undefined
+      -- Exclude the corners from these sides.
+      execute executableR "stencil2DTopBottom" $ \f ->
         undefined
       --
       return out
