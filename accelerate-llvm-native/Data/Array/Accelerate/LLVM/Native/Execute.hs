@@ -498,8 +498,8 @@ stencil12DOp kernel@NativeR{..} gamma aenv stream arr = do
   if ncpu == 1
     then liftIO $ do
       -- Sequential stencil operation
-      out <- undefined
-      let sidesParams = undefined :: (Int, Int, Int, Array DIM2 b)
+      out <- allocateArray $ shape arr 
+      let sidesParams = undefined :: (Int, Int, Int, Int, Array DIM2 b)
       --
       execute executableR "stencil2DMiddle" $ \f ->
         executeOp 1 fillS f gamma aenv undefined out
