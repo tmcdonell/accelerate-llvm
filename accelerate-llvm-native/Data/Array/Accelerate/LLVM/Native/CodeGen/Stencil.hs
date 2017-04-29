@@ -269,4 +269,16 @@ mkStencil2DTopBottom
     -> IRManifest Native aenv (Array DIM2 a)
     -> CodeGen (IROpenAcc Native aenv (Array DIM2 b))
 mkStencil2DTopBottom _ aenv f boundary (IRManifest v) =
-  undefined
+  let
+      (start, end, _, maxBorderOffsetHeight, _, height, paramGang) = gangParam2DSides
+      (arrOut, paramOut) = mutableArray ("out" :: Name (Array DIM2 b))
+      paramEnv           = envParam aenv
+  in
+  makeOpenAcc "stencil2DTopBottom" (paramGang ++ paramOut ++ paramEnv) $ do
+    imapFromTo (int 0) maxBorderOffsetHeight $ \y -> do
+      bottomy <- sub numType height =<< add numType (int 1) maxBorderOffsetHeight
+      imapFromTo start end $ \x -> do
+        -- Top
+        boundaryElement aenv f boundary ir x y
+        -- Bottom
+        boundaryElement aenv f boundary ir x bottomy
