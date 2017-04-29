@@ -82,6 +82,33 @@ gangParam2D =
     )
 
 
+gangParam2DSides :: ( IR Int, IR Int, IR Int
+                    , IR Int, IR Int, IR Int, [LLVM.Parameter])
+gangParam2DSides =
+  let t            = scalarType
+      start        = "ix.start"
+      end          = "ix.end"
+      offsetWidth  = "ix.maxBorderOffsetWidth"
+      offsetHeight = "ix.maxBorderOffsetHeight"
+      width        = "ix.width"
+      height       = "ix.height"
+  in
+    ( local t start
+    , local t end
+    , local t offsetWidth
+    , local t offsetHeight
+    , local t width
+    , local t height
+    , [ scalarParameter t start
+      , scalarParameter t end
+      , scalarParameter t offsetWidth
+      , scalarParameter t offsetHeight
+      , scalarParameter t width
+      , scalarParameter t height
+      ]
+    )
+
+
 index2D :: IR Int -> IR Int -> IR DIM2
 index2D (IR x) (IR y) = IR (OP_Pair (OP_Pair OP_Unit y) x)
 
