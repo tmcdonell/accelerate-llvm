@@ -25,9 +25,11 @@ module Data.Array.Accelerate.LLVM.Native.Execute (
 ) where
 
 -- accelerate
+import Data.Array.Accelerate.AST    
 import Data.Array.Accelerate.Error
 import Data.Array.Accelerate.Array.Sugar
 import Data.Array.Accelerate.Analysis.Match
+import Data.Array.Accelerate.Analysis.Stencil
 
 import Data.Array.Accelerate.LLVM.Analysis.Match
 import Data.Array.Accelerate.LLVM.Execute
@@ -481,7 +483,7 @@ stencil1AllOp kernel gamma aenv stream arr =
   simpleOp kernel gamma aenv stream (shape arr)
 
 stencil12DOp
-    :: forall aenv a b. (Shape DIM2, Elt b)
+    :: forall aenv a b stencil. (Stencil DIM2 a stencil, Shape DIM2, Elt b)
     => ExecutableR Native
     -> Gamma aenv
     -> Aval aenv
@@ -492,8 +494,11 @@ stencil12DOp kernel@NativeR{..} gamma aenv stream arr = do
   Native{..} <- gets llvmTarget
   let
       ncpu         = gangSize
-      borderWidth  = undefined :: Int
-      borderHeight = undefined :: Int
+      shapes       = offsets (undefined :: Fun aenv (stencil -> b))
+                             (undefined :: OpenAcc aenv (Array DIM2 a))
+      (borderWidth, borderHeight) = case shapes of
+          (z :. x :. y):_ -> (x, y)
+          _ -> undefined
       width        = undefined :: Int
       height       = undefined :: Int
   --
