@@ -505,13 +505,13 @@ stencil12DOp kernel@NativeR{..} gamma aenv stream arr = do
       let middleParams = (borderWidth, width - borderWidth - 1, out)
       --
       execute executableR "stencil2DMiddle" $ \f ->
-        executeOp 1 fillS f gamma aenv undefined middleParams
+        executeOp 1 fillS f gamma aenv (IE borderHeight (height - borderHeight)) middleParams
       -- Include the corners in these sides.
       execute executableR "stencil2DLeftRight" $ \f ->
-        executeOp 1 fillS f gamma aenv undefined sidesParams
+        executeOp 1 fillS f gamma aenv (IE 0 height) sidesParams
       -- Exclude the corners from these sides.
       execute executableR "stencil2DTopBottom" $ \f ->
-        executeOp 1 fillS f gamma aenv undefined sidesParams
+        executeOp 1 fillS f gamma aenv (IE borderWidth (width - borderWidth)) sidesParams
       --
       return out
 
