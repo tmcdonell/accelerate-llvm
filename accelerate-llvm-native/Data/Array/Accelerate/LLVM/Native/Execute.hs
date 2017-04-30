@@ -491,18 +491,21 @@ stencil12DOp
 stencil12DOp kernel@NativeR{..} gamma aenv stream arr = do
   Native{..} <- gets llvmTarget
   let
-      ncpu = gangSize
-      borderWidth = undefined
-      borderHeight = undefined
+      ncpu         = gangSize
+      borderWidth  = undefined :: Int
+      borderHeight = undefined :: Int
+      width        = undefined :: Int
+      height       = undefined :: Int
   --
   if ncpu == 1
     then liftIO $ do
       -- Sequential stencil operation
       out <- allocateArray $ shape arr 
-      let sidesParams = undefined :: (Int, Int, Int, Int, Array DIM2 b)
+      let sidesParams  = (borderWidth, borderHeight, width, height, out)
+      let middleParams = (borderWidth, width - borderWidth - 1, out)
       --
       execute executableR "stencil2DMiddle" $ \f ->
-        executeOp 1 fillS f gamma aenv undefined out
+        executeOp 1 fillS f gamma aenv undefined middleParams
       -- Include the corners in these sides.
       execute executableR "stencil2DLeftRight" $ \f ->
         executeOp 1 fillS f gamma aenv undefined sidesParams
