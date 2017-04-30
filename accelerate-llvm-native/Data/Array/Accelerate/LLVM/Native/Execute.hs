@@ -493,14 +493,15 @@ stencil12DOp
 stencil12DOp kernel@NativeR{..} gamma aenv stream arr = do
   Native{..} <- gets llvmTarget
   let
-      ncpu         = gangSize
-      shapes       = offsets (undefined :: Fun aenv (stencil -> b))
-                             (undefined :: OpenAcc aenv (Array DIM2 a))
+      ncpu   = gangSize
+      shapes = offsets (undefined :: Fun aenv (stencil -> b))
+                       (undefined :: OpenAcc aenv (Array DIM2 a))
       (borderWidth, borderHeight) = case shapes of
-          (z :. x :. y):_ -> (x, y)
+          (Z :. x :. y):_ -> (x, y)
           _ -> undefined
-      width        = undefined :: Int
-      height       = undefined :: Int
+      (width, height) = case (shape arr) of
+          (Z :. x :. y) -> (x, y)
+          _ -> undefined
   --
   if ncpu == 1
     then liftIO $ do
