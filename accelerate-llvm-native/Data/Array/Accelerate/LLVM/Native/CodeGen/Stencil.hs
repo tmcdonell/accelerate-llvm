@@ -70,14 +70,14 @@ gangParam2D =
       starty = "iy.start"
       endy   = "iy.end"
   in
-    ( local t startx
-    , local t starty
-    , local t endx
+    ( local t starty
     , local t endy
-    , [ scalarParameter t startx
-      , scalarParameter t starty
-      , scalarParameter t endx
+    , local t startx
+    , local t endx
+    , [ scalarParameter t starty
       , scalarParameter t endy
+      , scalarParameter t startx
+      , scalarParameter t endx
       ]
     )
 
@@ -173,7 +173,7 @@ mkStencil2DMiddle
     -> CodeGen (IROpenAcc Native aenv (Array DIM2 b))
 mkStencil2DMiddle _ aenv f boundary ir@(IRManifest v) =
   let
-      (x0,y0,x1,y1, paramGang) = gangParam2D
+      (y0,y1,x0,x1, paramGang) = gangParam2D
       (arrOut, paramOut)       = mutableArray ("out" :: Name (Array DIM2 b))
       paramEnv                 = envParam aenv
   in
