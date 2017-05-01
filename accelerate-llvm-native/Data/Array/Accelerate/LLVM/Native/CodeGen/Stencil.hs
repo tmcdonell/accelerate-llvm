@@ -201,7 +201,7 @@ mkStencil2DLeftRight _ aenv f boundary ir@(IRManifest v) =
   in
   makeOpenAcc "stencil2DLeftRight" (paramGang ++ paramOut ++ paramEnv) $ do
     imapFromTo (int 0) maxBorderOffsetWidth $ \x -> do
-      rightx <- sub numType width =<< add numType (int 1) maxBorderOffsetWidth
+      rightx <- sub numType width =<< add numType (int 1) x
       imapFromTo start end $ \y -> do
         -- Left
         boundaryElement aenv f boundary ir arrOut x y
@@ -228,7 +228,7 @@ mkStencil2DTopBottom _ aenv f boundary ir@(IRManifest v) =
   in
   makeOpenAcc "stencil2DTopBottom" (paramGang ++ paramOut ++ paramEnv) $ do
     imapFromTo (int 0) maxBorderOffsetHeight $ \y -> do
-      bottomy <- sub numType height =<< add numType (int 1) maxBorderOffsetHeight
+      bottomy <- sub numType height =<< add numType (int 1) y
       imapFromTo start end $ \x -> do
         -- Top
         boundaryElement aenv f boundary ir arrOut x y
