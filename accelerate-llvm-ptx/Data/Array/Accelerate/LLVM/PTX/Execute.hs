@@ -93,8 +93,8 @@ instance Execute PTX where
   scanr1        = scan1Op
   scanr'        = scan'Op
   permute       = permuteOp
-  stencil1      = stencil1Op
-  stencil2      = stencil2Op
+  stencil1 _    = stencil1Op
+  stencil2 _    = stencil2Op
 
 
 -- Skeleton implementation

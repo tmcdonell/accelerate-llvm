@@ -18,7 +18,7 @@
 
 module Data.Array.Accelerate.LLVM.Execute (
 
-  Execute(..), Gamma,
+  Execute(..), Gamma, Proxy,
   executeAcc, executeAfun1,
 
 ) where
@@ -46,8 +46,9 @@ import Data.Array.Accelerate.LLVM.Execute.Async                 hiding ( join )
 import Data.Array.Accelerate.LLVM.Execute.Environment
 
 -- library
-import Control.Monad
 import Control.Applicative                                      hiding ( Const )
+import Control.Monad
+import Data.Proxy
 import Prelude                                                  hiding ( exp, map, unzip, scanl, scanr, scanl1, scanr1 )
 
 
@@ -176,16 +177,18 @@ class (Remote arch, Foreign arch) => Execute arch where
                 -> Array sh' e
                 -> LLVM arch (Array sh' e)
 
-  stencil1      :: (Shape sh, Elt a, Elt b)
-                => ExecutableR arch
+  stencil1      :: (Stencil sh a stencil, Shape sh, Elt a, Elt b)
+                => Proxy (stencil -> b)
+                -> ExecutableR arch
                 -> Gamma aenv
                 -> AvalR arch aenv
                 -> StreamR arch
                 -> Array sh a
                 -> LLVM arch (Array sh b)
 
-  stencil2      :: (Shape sh, Elt a, Elt b, Elt c)
-                => ExecutableR arch
+  stencil2      :: (Stencil sh a stencil1, Stencil sh b stencil2, Shape sh, Elt a, Elt b, Elt c)
+                => Proxy (stencil1 -> stencil2 -> c)
+                -> ExecutableR arch
                 -> Gamma aenv
                 -> AvalR arch aenv
                 -> StreamR arch
@@ -293,8 +296,8 @@ executeOpenAcc (ExecAcc kernel gamma pacc) aenv stream =
     Scanl' _ _ a                -> scanl' kernel gamma aenv stream =<< extent a
     Scanr' _ _ a                -> scanr' kernel gamma aenv stream =<< extent a
     Permute _ d _ a             -> join $ permute kernel gamma aenv stream (inplace d) <$> extent a <*> travA d
-    Stencil _ _ a               -> stencil1 kernel gamma aenv stream =<< travA a
-    Stencil2 _ _ a _ b          -> join $ stencil2 kernel gamma aenv stream <$> travA a <*> travA b
+    Stencil f _ a               -> stencil1 (proxyF f) kernel gamma aenv stream =<< travA a
+    Stencil2 f _ a _ b          -> join $ stencil2 (proxyF f) kernel gamma aenv stream <$> travA a <*> travA b
 
     -- Removed by fusion
     Replicate{}                 -> fusionError
@@ -327,6 +330,9 @@ executeOpenAcc (ExecAcc kernel gamma pacc) aenv stream =
     inplace :: ExecOpenAcc arch aenv a -> Bool
     inplace (ExecAcc _ _ Avar{}) = False
     inplace _                    = True
+
+    proxyF :: ExecFun arch aenv f -> Proxy f
+    proxyF _ = Proxy
 
     -- Skeleton implementation
     -- -----------------------

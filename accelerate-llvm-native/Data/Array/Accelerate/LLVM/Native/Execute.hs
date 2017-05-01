@@ -457,16 +457,17 @@ permuteOp NativeR{..} gamma aenv () inplace shIn dfs = do
 
 
 stencil1Op
-    :: forall aenv a b sh. (Shape sh, Elt b)
-    => ExecutableR Native
+    :: forall aenv stencil sh a b. (Stencil sh a stencil, Shape sh, Elt a, Elt b)
+    => Proxy (stencil -> b)
+    -> ExecutableR Native
     -> Gamma aenv
     -> Aval aenv
     -> Stream
     -> Array sh a
     -> LLVM Native (Array sh b)
-stencil1Op
+stencil1Op proxy
   | Just Refl <- matchShapeType (undefined :: DIM2) (undefined :: sh)
-  = stencil12DOp
+  = stencil12DOp proxy
   --
   | otherwise
   = stencil1AllOp
@@ -483,14 +484,15 @@ stencil1AllOp kernel gamma aenv stream arr =
   simpleOp kernel gamma aenv stream (shape arr)
 
 stencil12DOp
-    :: forall aenv a b stencil. (Stencil DIM2 a stencil, Shape DIM2, Elt b)
-    => ExecutableR Native
+    :: forall aenv a b stencil. (Stencil DIM2 a stencil, Elt b)
+    => Proxy (stencil -> b)
+    -> ExecutableR Native
     -> Gamma aenv
     -> Aval aenv
     -> Stream
     -> Array DIM2 a
     -> LLVM Native (Array DIM2 b)
-stencil12DOp kernel@NativeR{..} gamma aenv stream arr = do
+stencil12DOp _ kernel@NativeR{..} gamma aenv stream arr = do
   Native{..} <- gets llvmTarget
   let
       ncpu   = gangSize
@@ -528,14 +530,15 @@ stencil12DOp kernel@NativeR{..} gamma aenv stream arr = do
 
 stencil2Op
     :: (Shape sh, Elt c)
-    => ExecutableR Native
+    => Proxy (stencil1 -> stencil2 -> c)
+    -> ExecutableR Native
     -> Gamma aenv
     -> Aval aenv
     -> Stream
     -> Array sh a
     -> Array sh b
     -> LLVM Native (Array sh c)
-stencil2Op kernel gamma aenv stream arr brr =
+stencil2Op _ kernel gamma aenv stream arr brr =
   simpleOp kernel gamma aenv stream (shape arr `intersect` shape brr)
 
 
