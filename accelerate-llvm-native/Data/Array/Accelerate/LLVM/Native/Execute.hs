@@ -507,7 +507,7 @@ stencil12DOp _ kernel@NativeR{..} gamma aenv stream arr = do
     then liftIO $ do
       -- Sequential stencil operation
       out <- allocateArray $ shape arr
-      let sidesParams  = (borderWidth, borderHeight, width, height, out)
+      let sidesParams  = (borderWidth - 1, borderHeight - 1, width, height, out)
       let middleParams = (borderWidth, width - borderWidth - 1, out)
       --
       execute executableR "stencil2DMiddle" $ \f ->
