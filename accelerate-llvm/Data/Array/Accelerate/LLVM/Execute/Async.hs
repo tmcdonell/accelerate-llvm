@@ -24,7 +24,7 @@ import Data.Array.Accelerate.LLVM.State
 -- some point (presumably, in the future). This is essentially a write-once
 -- IVar.
 --
-data AsyncR arch a = AsyncR !(EventR arch) !a
+data AsyncR arch a = AsyncR !(Maybe (EventR arch)) !(EventR arch) !a
 
 class Async arch where
   -- | Streams (i.e. threads) can execute concurrently with other streams, but
@@ -38,6 +38,11 @@ class Async arch where
   --
   type EventR arch
 
+  -- | Asynchronous operations can (optionally) include timing information to
+  -- record how long they took to execute.
+  --
+  type TimeR arch
+
   -- | Create a new execution stream that can be used to track (potentially
   -- parallel) computations
   --
@@ -49,9 +54,15 @@ class Async arch where
   join        :: StreamR arch -> LLVM arch ()
 
   -- | Generate a new event at the end of the given execution stream. It will be
-  -- filled once all prior work submitted to the stream has completed.
+  -- filled once all prior work submitted to the stream has completed. The first
+  -- argument indicates whether timing information should be recorded.
   --
-  checkpoint  :: StreamR arch -> LLVM arch (EventR arch)
+  -- TLM: I dislike this Bool parameter; maybe we should just always enable
+  -- timing information, but we should test what kind of overhead that entails
+  -- since for the most part we don't require it. This parameter also makes
+  -- 'elapsed' a partial function.
+  --
+  checkpoint  :: Bool -> StreamR arch -> LLVM arch (EventR arch)
 
   -- | Make all future work submitted to the given execution stream wait until
   -- the given event has passed. Typically the event is from a different
@@ -65,36 +76,36 @@ class Async arch where
   --
   block       :: EventR arch -> LLVM arch ()
 
-  -- | Execute the given operation asynchronously in a new execution stream and
-  -- time how long it takes.
+  -- | Get the time which elapsed between two (completed) events. The events
+  -- must be created with timing enabled.
   --
-  -- @robeverest: What the actual fuck is this. How is this asynchronous? Why
-  -- does this live here???
-  --
-  timed       :: (StreamR arch -> LLVM arch a) -> LLVM arch (Double,a)
-
-  -- | Interleave a computation in order to do lazy IO.
-  --
-  -- @robeverest: This doesn't belong here either.
-  --
-  unsafeInterleave :: LLVM arch a
-                   -> LLVM arch a
+  elapsed     :: EventR arch -> EventR arch -> LLVM arch (TimeR arch)
 
 
--- | Wait for an asynchronous operation to complete, then return it.
+-- | Wait for an asynchronous operation to complete, then return it. If timing
+-- was enabled for the operation, the elapsed time is returned as well.
 --
-get :: Async arch => AsyncR arch a -> LLVM arch a
-get (AsyncR e a) = block e >> return a
+get :: Async arch
+    => AsyncR arch a
+    -> LLVM arch (a, Maybe (TimeR arch))
+get (AsyncR me1 e2 a) = do
+  block e2
+  t <- maybe (return Nothing) (\e1 -> Just <$> elapsed e1 e2) me1
+  return (a, t)
 
 -- | Execute the given operation asynchronously in a new execution stream.
 --
-async :: Async arch
-      => (StreamR arch -> LLVM arch a)
-      -> LLVM arch (AsyncR arch a)
-async f = do
-  s <- fork
-  r <- f s
-  e <- checkpoint s
+async
+    :: Async arch
+    => Bool                             -- ^ enable timing information?
+    -> (StreamR arch -> LLVM arch a)    -- ^ operation to execute asynchronously
+    -> LLVM arch (AsyncR arch a)        -- ^ currently executing operation
+async timed f = do
+  s   <- fork
+  e1  <- if timed then Just <$> checkpoint timed s
+                  else return Nothing
+  r   <- f s
+  e2  <- checkpoint timed s
   join s
-  return $ AsyncR e r
+  return $ AsyncR e1 e2 r
 

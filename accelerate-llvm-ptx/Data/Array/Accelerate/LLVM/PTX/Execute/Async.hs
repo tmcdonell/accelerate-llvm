@@ -23,7 +23,6 @@ module Data.Array.Accelerate.LLVM.PTX.Execute.Async (
 import Data.Array.Accelerate.LLVM.Execute.Async                 hiding ( Async )
 import qualified Data.Array.Accelerate.LLVM.Execute.Async       as A
 
-import Data.Array.Accelerate.LLVM.PTX.State
 import Data.Array.Accelerate.LLVM.PTX.Target
 import Data.Array.Accelerate.LLVM.PTX.Execute.Event             ( Event )
 import Data.Array.Accelerate.LLVM.PTX.Execute.Stream            ( Stream )
@@ -32,8 +31,6 @@ import qualified Data.Array.Accelerate.LLVM.PTX.Execute.Stream  as Stream
 
 -- standard library
 import Control.Monad.State
-import Data.Functor                                             ( (<$>) )
-import GHC.Float                                                ( float2Double )
 
 
 -- Asynchronous arrays in the CUDA backend are tagged with an Event that will be
@@ -44,6 +41,7 @@ type Async a = AsyncR PTX a
 instance A.Async PTX where
   type StreamR PTX = Stream
   type EventR  PTX = Event
+  type TimeR   PTX = Float
 
   {-# INLINEABLE fork #-}
   fork =
@@ -54,8 +52,8 @@ instance A.Async PTX where
     liftIO $! Stream.destroy stream
 
   {-# INLINEABLE checkpoint #-}
-  checkpoint stream =
-    Event.waypoint False stream
+  checkpoint timed stream =
+    Event.waypoint timed stream
 
   {-# INLINEABLE after #-}
   after stream event =
@@ -65,16 +63,7 @@ instance A.Async PTX where
   block event =
     liftIO $! Event.block event
 
-  {-# INLINEABLE timed #-}
-  timed f = do
-    s     <- fork
-    start <- Event.waypoint True s
-    r     <- f s
-    end   <- Event.waypoint True s
-    block start
-    block end
-    time  <- liftIO $! float2Double <$> Event.elapsedTime start end
-    return (time,r)
+  {-# INLINEABLE elapsed #-}
+  elapsed start end =
+    liftIO $! Event.elapsedTime start end
 
-  {-# INLINEABLE unsafeInterleave #-}
-  unsafeInterleave = unsafeInterleavePTX

@@ -1,4 +1,5 @@
-{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeFamilies    #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 -- |
 -- Module      : Data.Array.Accelerate.LLVM.Native.Execute.Async
@@ -19,10 +20,10 @@ module Data.Array.Accelerate.LLVM.Native.Execute.Async (
 ) where
 
 -- accelerate
+import Data.Array.Accelerate.Error
 import Data.Array.Accelerate.LLVM.Execute.Async                     hiding ( Async )
 import qualified Data.Array.Accelerate.LLVM.Execute.Async           as A
 
-import Data.Array.Accelerate.LLVM.Native.State
 import Data.Array.Accelerate.LLVM.Native.Target
 
 import Control.Monad.Trans
@@ -38,7 +39,8 @@ type Event   = A.EventR  Native
 --
 instance A.Async Native where
   type StreamR Native = ()
-  type EventR  Native = ()
+  type EventR  Native = Maybe (UTCTime, Integer)  -- walltime, cputime
+  type TimeR   Native = (Float, Float)            -- walltime, cputime (s)
 
   {-# INLINE fork #-}
   fork = return ()
@@ -46,28 +48,24 @@ instance A.Async Native where
   {-# INLINE join #-}
   join () = return ()
 
-  {-# INLINE checkpoint #-}
-  checkpoint () = return ()
+  {-# INLINEABLE checkpoint #-}
+  checkpoint False () = return Nothing
+  checkpoint True  () = liftIO $ do
+    wall <- getCurrentTime
+    cpu  <- getCPUTime
+    return (Just (wall,cpu))
 
   {-# INLINE after #-}
-  after () () = return ()
+  after () _ = return ()
 
   {-# INLINE block #-}
-  block () = return ()
+  block _ = return ()
 
-  {-# INLINE timed #-}
-  timed action = do
-    wall0 <- liftIO getCurrentTime
-    cpu0  <- liftIO getCPUTime
-    res   <- action ()
-    wall1 <- liftIO getCurrentTime
-    cpu1  <- liftIO getCPUTime
-    --
+  {-# INLINEABLE elapsed #-}
+  elapsed (Just (wall0, cpu0)) (Just (wall1, cpu1)) =
     let wallTime = realToFrac (diffUTCTime wall1 wall0)
         cpuTime  = fromIntegral (cpu1 - cpu0) * 1E-12
-    --
-    return (wallTime / cpuTime, res)
-
-  {-# INLINE unsafeInterleave #-}
-  unsafeInterleave = unsafeInterleaveNative
+    in return (wallTime, cpuTime)
+  elapsed _ _ =
+    $internalError "elapsed" "timing not enabled for selected events"
 

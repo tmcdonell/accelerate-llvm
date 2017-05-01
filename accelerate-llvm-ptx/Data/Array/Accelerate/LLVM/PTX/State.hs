@@ -15,7 +15,6 @@ module Data.Array.Accelerate.LLVM.PTX.State (
 
   evalPTX,
   createTargetForDevice, createTargetFromContext, defaultTarget,
-  unsafeInterleavePTX
 
 ) where
 
@@ -36,8 +35,7 @@ import Control.Parallel.Meta                                    ( Executable(..)
 -- standard library
 import Control.Concurrent                                       ( runInBoundThread )
 import Control.Exception                                        ( catch )
-import Control.Monad.State                                      ( gets, liftIO )
-import System.IO.Unsafe                                         ( unsafePerformIO, unsafeInterleaveIO )
+import System.IO.Unsafe                                         ( unsafePerformIO )
 import Foreign.CUDA.Driver.Error
 import qualified Foreign.CUDA.Driver                            as CUDA
 import qualified Foreign.CUDA.Driver.Context                    as Context
@@ -50,14 +48,6 @@ evalPTX ptx acc =
   runInBoundThread (CT.withContext (ptxContext ptx) (evalLLVM ptx acc))
   `catch`
   \e -> $internalError "unhandled" (show (e :: CUDAException))
-
-
--- | Interleave a computation in the native backend.
---
-unsafeInterleavePTX :: LLVM PTX a -> LLVM PTX a
-unsafeInterleavePTX a = do
-  target <- gets llvmTarget
-  liftIO (unsafeInterleaveIO (evalPTX target a))
 
 
 -- | Create a new PTX execution target for the given device

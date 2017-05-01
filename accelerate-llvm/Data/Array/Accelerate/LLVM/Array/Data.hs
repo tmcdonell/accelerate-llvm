@@ -1,4 +1,5 @@
 {-# LANGUAGE BangPatterns        #-}
+{-# LANGUAGE CPP                 #-}
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE RankNTypes          #-}
@@ -182,8 +183,9 @@ newRemote sh f =
 {-# INLINEABLE useRemote #-}
 useRemote :: (Remote arch, Arrays arrs) => arrs -> LLVM arch arrs
 useRemote arrs = do
-  AsyncR _ a <- async (useRemoteAsync arrs)
-  get a
+  AsyncR _ _ a <- async False (useRemoteAsync arrs)
+  (v, _)       <- get a
+  return v
 
 
 -- | Upload an immutable array from the host to the remote device,
@@ -202,12 +204,12 @@ useRemoteAsync arrs stream = do
     in  runArray arr $ \ad -> do
           s <- fork
           useRemoteR n (Just s) ad
-          after stream =<< checkpoint s
+          after stream =<< checkpoint False s
           join s
           return ad
   --
-  event  <- checkpoint stream   -- TLM: Assuming that adding events to a stream counts as things to wait for
-  return $! AsyncR event arrs'
+  event  <- checkpoint False stream   -- TLM: Assuming that adding events to a stream counts as things to wait for
+  return $! AsyncR Nothing event arrs'
 
 
 -- | Uploading existing arrays from the host to the remote device. This is
@@ -217,8 +219,9 @@ useRemoteAsync arrs stream = do
 {-# INLINEABLE copyToRemote #-}
 copyToRemote :: (Remote arch, Arrays a) => a -> LLVM arch a
 copyToRemote arrs = do
-  AsyncR _ a <- async (copyToRemoteAsync arrs)
-  get a
+  AsyncR _ _ a <- async False (copyToRemoteAsync arrs)
+  (v, _)       <- get a
+  return v
 
 
 -- | Upload an existing array to the remote device, asynchronously.
@@ -235,12 +238,12 @@ copyToRemoteAsync arrs stream = do
     in  runArray arr $ \ad -> do
           s <- fork
           copyToRemoteR 0 n (Just s) ad
-          after stream =<< checkpoint s
+          after stream =<< checkpoint False s
           join s
           return ad
   --
-  event  <- checkpoint stream
-  return $! AsyncR event arrs'
+  event  <- checkpoint False stream
+  return $! AsyncR Nothing event arrs'
 
 
 -- | Create a new remote vector from a section of an existing vector,
@@ -253,30 +256,32 @@ newRemoteSubarray :: (Remote arch, Shape sh, Elt e, sh :<= DIM2)
                   -> Array sh e   -- ^ source
                   -> LLVM arch (Array sh e)
 newRemoteSubarray start n src = do
-  AsyncR _ a <- async (newRemoteSubarrayAsync start n src)
-  get a
+  AsyncR _ _ a <- async False (newRemoteSubarrayAsync start n src)
+  (v, _)       <- get a
+  return v
 
 
 -- | Create a new remote vector from a section of an existing vector,
 -- asynchronously
 --
 {-# INLINEABLE newRemoteSubarrayAsync #-}
-newRemoteSubarrayAsync :: forall arch sh e. (Remote arch, Shape sh, Elt e, sh :<= DIM2)
-                       => sh           -- ^ starting index
-                       -> sh           -- ^ number of elements
-                       -> Array sh e   -- ^ source
-                       -> StreamR arch
-                       -> LLVM arch (AsyncR arch (Array sh e))
+newRemoteSubarrayAsync
+    :: forall arch sh e. (Remote arch, Shape sh, Elt e, sh :<= DIM2)
+    => sh               -- ^ starting index
+    -> sh               -- ^ number of elements
+    -> Array sh e       -- ^ source
+    -> StreamR arch
+    -> LLVM arch (AsyncR arch (Array sh e))
 newRemoteSubarrayAsync start sh src stream = do
   dst <- allocateRemote sh
   runArray2 src dst $ \sr de -> do
     s <- fork
     transfer s sr de
-    after stream =<< checkpoint s
+    after stream =<< checkpoint False s
     join s
   --
-  event  <- checkpoint stream
-  return $! AsyncR event dst
+  event  <- checkpoint False stream
+  return $! AsyncR Nothing event dst
   where
     transfer :: (Typeable e', Typeable a, ArrayElt e', Storable a, ArrayPtrs e' ~ Ptr a)
              => StreamR arch
@@ -295,7 +300,9 @@ newRemoteSubarrayAsync start sh src stream = do
               Z:.height:.width = sh
               Z:._:.pitch      = shape src
           duplicateToRemote2DR (y,x) (y + height, x + width) pitch (Just s) sr de
+#if __GLASGOW_HASKELL__ < 800
         _                         -> error "absurd"
+#endif
 
 
 -- | Copy an array from the remote device to the host. This is synchronous with
@@ -305,8 +312,9 @@ newRemoteSubarrayAsync start sh src stream = do
 {-# INLINEABLE copyToHost #-}
 copyToHost :: (Remote arch, Arrays a) => a -> LLVM arch a
 copyToHost arrs = do
-  AsyncR _ a <- async (copyToHostAsync arrs)
-  get a
+  AsyncR _ _ a <- async False (copyToHostAsync arrs)
+  (v, _)       <- get a
+  return v
 
 
 -- | Copy an array from the remote device to the host, asynchronously
@@ -323,12 +331,12 @@ copyToHostAsync arrs stream = do
     in  runArray arr $ \ad -> do
           s <- fork
           copyToHostR 0 n (Just s) ad
-          after stream =<< checkpoint s
+          after stream =<< checkpoint False s
           join s
           return ad
   --
-  event  <- checkpoint stream
-  return $! AsyncR event arrs'
+  event  <- checkpoint False stream
+  return $! AsyncR Nothing event arrs'
 
 
 -- | Copy arrays between two remote instances of the same type. This may be more
@@ -338,8 +346,9 @@ copyToHostAsync arrs stream = do
 {-# INLINEABLE copyToPeer #-}
 copyToPeer :: (Remote arch, Arrays a) => arch -> a -> LLVM arch a
 copyToPeer peer arrs = do
-  AsyncR _ a <- async (copyToPeerAsync peer arrs)
-  get a
+  AsyncR _ _ a <- async False (copyToPeerAsync peer arrs)
+  (v, _)       <- get a
+  return v
 
 
 -- | As 'copyToPeer', asynchronously.
@@ -357,12 +366,12 @@ copyToPeerAsync peer arrs stream = do
     in  runArray arr $ \ad -> do
           s <- fork
           copyToPeerR 0 n peer (Just s) ad
-          after stream =<< checkpoint s
+          after stream =<< checkpoint False s
           join s
           return ad
   --
-  event  <- checkpoint stream
-  return $! AsyncR event arrs'
+  event  <- checkpoint False stream
+  return $! AsyncR Nothing event arrs'
 
 
 -- Helpers for traversing the Arrays data structure

@@ -223,7 +223,7 @@ executeAcc
     => ExecAcc arch a
     -> LLVM arch a
 executeAcc acc =
-  get =<< async (executeOpenAcc acc Aempty)
+  fmap fst . get =<< async False (executeOpenAcc acc Aempty)
 
 {-# INLINEABLE executeAfun1 #-}
 executeAfun1
@@ -232,8 +232,8 @@ executeAfun1
     -> a
     -> LLVM arch b
 executeAfun1 afun arrs = do
-  AsyncR _ a <- async (useRemoteAsync arrs)
-  get =<< async (executeOpenAfun1 afun Aempty a)
+  AsyncR _ _ a    <- async False (useRemoteAsync arrs)
+  fmap fst . get =<< async False (executeOpenAfun1 afun Aempty a)
 
 
 -- Execute an open array function of one argument
@@ -285,13 +285,13 @@ executeOpenAcc (ExecAcc kernel gamma pacc) aenv stream =
     Subarray ix sh arr          -> join $ newRemoteSubarray <$> travE ix <*> travE sh <*> pure arr
 
     -- Environment manipulation
-    Avar ix                     -> do let AsyncR event arr = aprj ix aenv
+    Avar ix                     -> do let AsyncR _ event arr = aprj ix aenv
                                       after stream event
                                       return arr
-    Alet bnd body               -> do bnd'  <- async (executeOpenAcc bnd aenv)
+    Alet bnd body               -> do bnd'  <- async False (executeOpenAcc bnd aenv)
                                       body' <- executeOpenAcc body (aenv `Apush` bnd') stream
                                       return body'
-    Apply f a                   -> flip (executeOpenAfun1 f aenv) stream =<< async (executeOpenAcc a aenv)
+    Apply f a                   -> flip (executeOpenAfun1 f aenv) stream =<< async False (executeOpenAcc a aenv)
     Atuple tup                  -> toAtuple <$> travT tup
     Aprj ix tup                 -> evalPrj ix . fromAtuple <$> travA tup
     Acond p t e                 -> acond t e =<< travE p
@@ -353,7 +353,7 @@ executeOpenAcc (ExecAcc kernel gamma pacc) aenv stream =
     extent :: Shape sh => ExecOpenAcc arch aenv (Array sh e) -> LLVM arch sh
     extent ExecAcc{}       = $internalError "executeOpenAcc" "expected delayed array"
     extent (EmbedAcc sh)   = travE sh
-    extent (UnzipAcc _ ix) = let AsyncR _ a = aprj ix aenv
+    extent (UnzipAcc _ ix) = let AsyncR _ _ a = aprj ix aenv
                              in  return $ shape a
 
     inplace :: ExecOpenAcc arch aenv a -> Bool
@@ -381,10 +381,10 @@ executeOpenAcc (ExecAcc kernel gamma pacc) aenv stream =
            -> a
            -> LLVM arch a
     awhile p f a = do
-      e   <- checkpoint stream
-      r   <- get =<< async (executeOpenAfun1 p aenv (AsyncR e a))
+      e   <- checkpoint False stream
+      r   <- fmap fst . get =<< async False (executeOpenAfun1 p aenv (AsyncR Nothing e a))
       ok  <- indexRemote r 0
-      if ok then awhile p f =<< executeOpenAfun1 f aenv (AsyncR e a) stream
+      if ok then awhile p f =<< executeOpenAfun1 f aenv (AsyncR Nothing e a) stream
             else return a
 
     -- Foreign functions
@@ -398,7 +398,7 @@ executeOpenAcc (ExecAcc kernel gamma pacc) aenv stream =
         Nothing -> $internalError "foreignA" "failed to recover foreign function the second time"
 
 executeOpenAcc (UnzipAcc tup v) aenv stream = do
-  let AsyncR event arr = aprj v aenv
+  let AsyncR _ event arr = aprj v aenv
   after stream event
   return $ unzip tup arr
   where
@@ -518,7 +518,7 @@ executeOpenExp rootExp env aenv stream = travE rootExp
 
     linearIndex :: Array sh e -> Int -> LLVM arch e
     linearIndex arr ix = do
-      block =<< checkpoint stream
+      block =<< checkpoint False stream
       indexRemote arr ix
 
 executeSeq
@@ -636,7 +636,7 @@ executeExtend :: Execute arch
               -> LLVM arch (AvalR arch aenv')
 executeExtend (PushEnv env a) aenv = do
   aenv' <- executeExtend env aenv
-  a'    <- async (executeOpenAcc a aenv')
+  a'    <- async False (executeOpenAcc a aenv')
   return (Apush aenv' a')
 executeExtend BaseEnv aenv = return aenv
 
