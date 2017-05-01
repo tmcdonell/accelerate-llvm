@@ -182,6 +182,8 @@ mkStencil2DMiddle _ aenv f boundary ir@(IRManifest v) =
       imapFromTo x0 x1 $ \x ->
         middleElement aenv f boundary ir arrOut x y
 
+    return_
+
 
 mkStencil2DLeftRight
     :: forall aenv stencil a b. (Stencil DIM2 a stencil, Elt b, Skeleton Native)
@@ -205,6 +207,8 @@ mkStencil2DLeftRight _ aenv f boundary ir@(IRManifest v) =
         boundaryElement aenv f boundary ir arrOut x y
         -- Right
         boundaryElement aenv f boundary ir arrOut rightx y
+
+    return_
 
 
 
@@ -230,3 +234,5 @@ mkStencil2DTopBottom _ aenv f boundary ir@(IRManifest v) =
         boundaryElement aenv f boundary ir arrOut x y
         -- Bottom
         boundaryElement aenv f boundary ir arrOut x bottomy
+
+    return_
