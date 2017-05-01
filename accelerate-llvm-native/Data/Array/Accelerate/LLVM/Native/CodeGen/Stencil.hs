@@ -115,37 +115,34 @@ index2D (IR x) (IR y) = IR (OP_Pair (OP_Pair OP_Unit y) x)
 
 stencilElement
     :: forall aenv stencil a b. (Stencil DIM2 a stencil, Elt b, Skeleton Native)
-    => (IRArray (Array DIM2 a) -> IR DIM2 -> CodeGen (IR stencil))
+    => Maybe (Boundary (IR a))
     -> Gamma aenv
     -> IRFun1 Native aenv (stencil -> b)
-    -> Boundary (IR a)
     -> IRManifest Native aenv (Array DIM2 a)
     -> IRArray (Array DIM2 b)
     -> IR Int
     -> IR Int
     -> CodeGen ()
-stencilElement access aenv f boundary (IRManifest v) arrOut x y = do
+stencilElement mBoundary aenv f (IRManifest v) arrOut x y = do
   let ix = index2D x y
   i     <- intOfIndex (irArrayShape arrOut) ix
-  sten  <- access (irArray (aprj v aenv)) ix
+  sten  <- stencilAccess mBoundary (irArray (aprj v aenv)) ix
   r     <- app1 f sten
   writeArray arrOut i r
 
 
 middleElement, boundaryElement
     :: forall aenv stencil a b. (Stencil DIM2 a stencil, Elt b, Skeleton Native)
-    => Gamma aenv
+    => Boundary (IR a)
+    -> Gamma aenv
     -> IRFun1 Native aenv (stencil -> b)
-    -> Boundary (IR a)
     -> IRManifest Native aenv (Array DIM2 a)
     -> IRArray (Array DIM2 b)
     -> IR Int
     -> IR Int
     -> CodeGen ()
-middleElement =
-  stencilElement (stencilAccess Nothing)
-boundaryElement aenv f boundary =
-  stencilElement (stencilAccess $ Just boundary) aenv f boundary
+middleElement   _        = stencilElement  Nothing
+boundaryElement boundary = stencilElement (Just boundary)
 
 
 mkStencil2D
@@ -180,7 +177,7 @@ mkStencil2DMiddle _ aenv f boundary ir@(IRManifest v) =
   makeOpenAcc "stencil2DMiddle" (paramGang ++ paramOut ++ paramEnv) $ do
     imapFromTo y0 y1 $ \y ->
       imapFromTo x0 x1 $ \x ->
-        middleElement aenv f boundary ir arrOut x y
+        middleElement boundary aenv f ir arrOut x y
 
     return_
 
@@ -204,9 +201,9 @@ mkStencil2DLeftRight _ aenv f boundary ir@(IRManifest v) =
       rightx <- sub numType width =<< add numType (int 1) x
       imapFromTo start end $ \y -> do
         -- Left
-        boundaryElement aenv f boundary ir arrOut x y
+        boundaryElement boundary aenv f ir arrOut x y
         -- Right
-        boundaryElement aenv f boundary ir arrOut rightx y
+        boundaryElement boundary aenv f ir arrOut rightx y
 
     return_
 
@@ -231,8 +228,8 @@ mkStencil2DTopBottom _ aenv f boundary ir@(IRManifest v) =
       bottomy <- sub numType height =<< add numType (int 1) y
       imapFromTo start end $ \x -> do
         -- Top
-        boundaryElement aenv f boundary ir arrOut x y
+        boundaryElement boundary aenv f ir arrOut x y
         -- Bottom
-        boundaryElement aenv f boundary ir arrOut x bottomy
+        boundaryElement boundary aenv f ir arrOut x bottomy
 
     return_
