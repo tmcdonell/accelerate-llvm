@@ -25,7 +25,7 @@ module Data.Array.Accelerate.LLVM.Native.Execute (
 ) where
 
 -- accelerate
-import Data.Array.Accelerate.AST    
+import Data.Array.Accelerate.AST
 import Data.Array.Accelerate.Error
 import Data.Array.Accelerate.Array.Sugar
 import Data.Array.Accelerate.Analysis.Match
@@ -506,7 +506,7 @@ stencil12DOp kernel@NativeR{..} gamma aenv stream arr = do
   if ncpu == 1
     then liftIO $ do
       -- Sequential stencil operation
-      out <- allocateArray $ shape arr 
+      out <- allocateArray $ shape arr
       let sidesParams  = (borderWidth, borderHeight, width, height, out)
       let middleParams = (borderWidth, width - borderWidth - 1, out)
       --
