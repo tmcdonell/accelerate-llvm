@@ -499,7 +499,7 @@ stencil12DOp _ kernel@NativeR{..} gamma aenv stream arr = do
       shapes = offsets (undefined :: Fun aenv (stencil -> b))
                        (undefined :: OpenAcc aenv (Array DIM2 a))
       (borderWidth, borderHeight) = case shapes of
-          (Z :. y :. x):_ -> (x, y)
+          (Z :. y :. x):_ -> (-x, -y)
       (width, height) = case (shape arr) of
           (Z :. y :. x) -> (x, y)
   --
