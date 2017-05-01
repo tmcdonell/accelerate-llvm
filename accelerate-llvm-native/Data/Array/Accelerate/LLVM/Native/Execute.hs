@@ -500,10 +500,8 @@ stencil12DOp _ kernel@NativeR{..} gamma aenv stream arr = do
                        (undefined :: OpenAcc aenv (Array DIM2 a))
       (borderWidth, borderHeight) = case shapes of
           (Z :. x :. y):_ -> (x, y)
-          _ -> undefined
       (width, height) = case (shape arr) of
           (Z :. x :. y) -> (x, y)
-          _ -> undefined
   --
   if ncpu == 1
     then liftIO $ do
