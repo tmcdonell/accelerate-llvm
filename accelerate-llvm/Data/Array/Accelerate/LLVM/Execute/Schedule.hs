@@ -10,48 +10,59 @@
 --
 module Data.Array.Accelerate.LLVM.Execute.Schedule (
 
-  Schedule(..), sequential, sequentialChunked,
-  doubleSizeChunked,
+  Schedule(..),
+  sequential, sequentialChunked, doubleSizeChunked,
 
 ) where
 
 import Data.Array.Accelerate.Debug
 import System.IO.Unsafe                              ( unsafePerformIO )
 
+
 -- How to schedule the next chunk of the sequence.
 --
 data Schedule index = Schedule
   { index :: !index
-  , next  :: !(Double -> Schedule index)
+  , next  :: !(Float -> Schedule index)
   }
 
 sequential :: Int -> Schedule Int
-sequential i = Schedule i (const (f i))
+sequential i = Schedule
+  { index = i
+  , next  = const (f i)
+  }
   where
     f i' = Schedule (i'+1) (const (f (i'+1)))
 
 sequentialChunked :: (Int, Int) -> Schedule (Int, Int)
-sequentialChunked p@(i,_) = Schedule p (const (f i))
+sequentialChunked p@(i,_) = Schedule
+  { index = p
+  , next  = const (f i)
+  }
   where
     f i' = Schedule (i'+1,1) (const (f (i' + 1)))
 
 doubleSizeChunked :: (Int, Int) -> Schedule (Int, Int)
-doubleSizeChunked (s,n) = Schedule (s,n) (f s initLog initLog Nothing)
+doubleSizeChunked (s,n) = Schedule
+  { index = (s,n)
+  , next  = f s initLog initLog Nothing
+  }
   where
-    initLog = floor (logBase 2 (fromIntegral n) :: Double)
+    initLog = floor (logBase 2 (fromIntegral n) :: Float)
 
-    f :: Int -> Int -> Int -> Maybe Double -> Double -> Schedule (Int, Int)
+    f :: Int -> Int -> Int -> Maybe Float -> Float -> Schedule (Int, Int)
     f start logn logn' t t' =
       let logn'' = step logn logn' t t'
           start' = start + 2^(logn' `max` 0)
       in
-      Schedule (start', 2^(logn'' `max` 0))
-               (f start' logn' logn'' (Just t'))
+      Schedule { index = (start', 2^(logn'' `max` 0))
+               , next  = f start' logn' logn'' (Just t')
+               }
 
-    step :: Int -> Int -> Maybe Double -> Double -> Int
+    step :: Int -> Int -> Maybe Float -> Float -> Int
     step _ _ _ _
-      | Just n <- fixedChunkSize
-      = floor (logBase 2 (fromIntegral n) :: Double)
+      | Just m <- fixedChunkSize
+      = floor (logBase 2 (fromIntegral m) :: Float)
     step _ logn' Nothing _
       = logn' + 1
     step logn logn' (Just t) t'
@@ -92,20 +103,24 @@ doubleSizeChunked (s,n) = Schedule (s,n) (f s initLog initLog Nothing)
           -- reducing the rate till it stabilises.
           GT -> trace dump_sched "decreasing chunk size (3)" (logn' - 1)
 
-    compare' :: Double -> Double -> Ordering
+    compare' :: Float -> Float -> Ordering
     compare' u v
       | isInfinite u  = timingError
       | isInfinite v  = timingError
       | isNaN u       = timingError
       | isNaN v       = timingError
-      | abs u > abs v = if abs ((u-v) / u) < epsilon then EQ else GT
+      | abs u > abs v = if abs ((u-v) / u) < epsilon then EQ else GT  -- TLM: why abs??
       | otherwise     = if abs ((v-u) / v) < epsilon then EQ else LT
 
-    epsilon :: Double
+    epsilon :: Float
     epsilon = 0.05
 
     timingError = error "Impossible time measurements"
 
+
+-- TLM: Is this meant to be a feature? We should have some always-enabled RTS
+-- flags if so, rather than requiring debugging mode to be turned on.
+--
 {-# NOINLINE fixedChunkSize #-}
 fixedChunkSize :: Maybe Int
 fixedChunkSize = unsafePerformIO $ queryFlag seq_chunk_size

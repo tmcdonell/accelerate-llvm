@@ -170,7 +170,7 @@ compileOpenAcc = traverseAcc
         Subarray i s arr        -> node =<< liftA3 Subarray             <$> travE i <*> travE s <*> pure (pure arr)
 
         -- Sequences
-        Collect l u i s         -> node =<< liftA4 Collect              <$> travE l <*> fmap sequenceA (mapM travE u) <*> fmap sequenceA (mapM travE i) <*> fmap pure (compileOpenSeq s)
+        Collect si l u i s      -> node =<< liftA4 (Collect si)         <$> travE l <*> fmap sequenceA (mapM travE u) <*> fmap sequenceA (mapM travE i) <*> fmap pure (compileOpenSeq s)
 
         -- Index space transforms
         Reshape s a             -> node =<< liftA2 Reshape              <$> travE s <*> travA a

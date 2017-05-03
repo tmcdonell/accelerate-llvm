@@ -56,7 +56,7 @@ import Control.Monad                                            ( join )
 import Control.Monad.Trans                                      ( liftIO )
 import Control.Applicative                                      hiding ( Const )
 import Data.Traversable                                         ( sequenceA, mapM )
-import Data.Typeable                                            ( eqT )
+import Data.Maybe                                               ( fromJust )
 import Prelude                                                  hiding ( exp, map, unzip, scanl, scanr, scanl1, scanr1, mapM )
 
 
@@ -298,10 +298,10 @@ executeOpenAcc (ExecAcc kernel gamma pacc) aenv stream =
     Awhile p f a                -> awhile p f =<< travA a
 
     -- Sequence computation
-    Collect l u i s             -> do l' <- travE l
+    Collect si l u i s          -> do l' <- travE l
                                       u' <- mapM travE u
                                       i' <- mapM travE i
-                                      executeOpenSeq l' u' i' s aenv stream
+                                      executeOpenSeq si l' u' i' s aenv stream
 
     -- Foreign function
     Aforeign asm _ a            -> foreignA asm =<< travA a
@@ -522,57 +522,66 @@ executeOpenExp rootExp env aenv stream = travE rootExp
       indexRemote arr ix
 
 executeSeq
-  :: Execute arch
-  => StreamSeq (Int,Int) (ExecOpenAcc arch) arrs
-  -> LLVM arch arrs
+    :: Execute arch
+    => StreamSeq (Int,Int) (ExecOpenAcc arch) arrs
+    -> LLVM arch arrs
 executeSeq (StreamSeq binds s) = do
-  aenv <- executeExtend binds Aempty
-  get =<< async (executeOpenSeq 1 Nothing Nothing s aenv)
+  aenv  <- executeExtend binds Aempty
+  (v,_) <- get =<< async False (executeOpenSeq SeqIndexRpair 1 Nothing Nothing s aenv)
+  return v
 
+{-# SPECIALISE executeOpenSeq :: Execute arch => SeqIndex Int       -> Int -> Maybe Int -> Maybe Int -> PreOpenSeq Int       (ExecOpenAcc arch) aenv arrs -> AvalR arch aenv -> StreamR arch -> LLVM arch arrs #-}
+{-# SPECIALISE executeOpenSeq :: Execute arch => SeqIndex (Int,Int) -> Int -> Maybe Int -> Maybe Int -> PreOpenSeq (Int,Int) (ExecOpenAcc arch) aenv arrs -> AvalR arch aenv -> StreamR arch -> LLVM arch arrs #-}
 executeOpenSeq
-  :: forall arch index aenv arrs. (Execute arch, SeqIndex index)
-  => Int
-  -> Maybe Int
-  -> Maybe Int
-  -> PreOpenSeq index (ExecOpenAcc arch) aenv arrs
-  -> AvalR arch aenv
-  -> StreamR arch
-  -> LLVM arch arrs
-executeOpenSeq mi _ma i s aenv stream = executeSeq' BaseEnv s
+    :: forall arch index aenv arrs. (Execute arch, Elt index)
+    => SeqIndex index
+    -> Int
+    -> Maybe Int
+    -> Maybe Int
+    -> PreOpenSeq index (ExecOpenAcc arch) aenv arrs
+    -> AvalR arch aenv
+    -> StreamR arch
+    -> LLVM arch arrs
+executeOpenSeq si mi _ma i s aenv stream = executeSeq' BaseEnv s
   where
-    sequence' []     = return []
-    sequence' (x:xs) = do
-      x'  <- x
-      xs' <- unsafeInterleave (sequence' xs)
-      return (x':xs')
-
-    executeSeq' :: forall aenv'. Extend (Producer index (ExecOpenAcc arch)) aenv aenv' -> PreOpenSeq index (ExecOpenAcc arch) aenv' arrs -> LLVM arch arrs
+    executeSeq'
+        :: forall aenv'.
+           Extend (Producer index (ExecOpenAcc arch)) aenv aenv'
+        -> PreOpenSeq index (ExecOpenAcc arch) aenv' arrs
+        -> LLVM arch arrs
     executeSeq' prods s = do
-      index             <- executeExp (initialIndex (Const mi)) Aempty stream
+      index             <- return $ initialIndex mi
       (ext, Just aenv') <- evalSources (indexSize index) prods
       case s of
-        Producer (Pull src) s -> executeSeq' (PushEnv prods (Pull src)) s
-        Producer (ProduceAccum l f a) (Consumer (Last a' d)) -> (last <$>) $
-          join $ go i
-            <$> pure (schedule index)
-            <*> sequenceA (executeExp <$> l <*> pure aenv' <*> pure stream)
-            <*> pure (executeOpenAfun2 f)
-            <*> async (executeOpenAcc a aenv')
-            <*> (sequence' [executeOpenAcc d (aenv' `Apush` error "@robeverest what the fuck is this?") stream])
-            <*> pure (\aenv' -> executeOpenAcc a' aenv' stream)
-            <*> pure ext
-            <*> pure (Just aenv')
-        Producer (ProduceAccum l f a) (Reify ty a') -> (concatMap (divide ty) <$>) $
-          join $ go i
-            <$> pure (schedule index)
-            <*> sequenceA (executeExp <$> l <*> pure aenv' <*> pure stream)
-            <*> pure (executeOpenAfun2 f)
-            <*> async (executeOpenAcc a aenv')
-            <*> pure []
-            <*> pure (\aenv' -> executeOpenAcc a' aenv' stream)
-            <*> pure ext
-            <*> pure (Just aenv')
+        Producer (Pull src) s
+          -> executeSeq' (PushEnv prods (Pull src)) s
+
+        Producer (ProduceAccum l f a) (Consumer (Last a' d))
+          -> fmap last
+           . join
+           $ go i <$> pure (schedule index)
+                  <*> sequenceA (executeExp <$> l <*> pure aenv' <*> pure stream)
+                  <*> pure (executeOpenAfun2 f)
+                  <*> async False (executeOpenAcc a aenv')
+                  <*> sequence [executeOpenAcc d (aenv' `Apush` $internalError "executeOpenSeq" "referenced top variable") stream]
+                  <*> pure (\aenv' -> executeOpenAcc a' aenv' stream)
+                  <*> pure ext
+                  <*> pure (Just aenv')
+
+        Producer (ProduceAccum l f a) (Reify ty a')
+          -> fmap (concatMap (divide ty))
+           . join
+           $ go i <$> pure (schedule index)
+                  <*> sequenceA (executeExp <$> l <*> pure aenv' <*> pure stream)
+                  <*> pure (executeOpenAfun2 f)
+                  <*> async False (executeOpenAcc a aenv')
+                  <*> pure []
+                  <*> pure (\aenv' -> executeOpenAcc a' aenv' stream)
+                  <*> pure ext
+                  <*> pure (Just aenv')
+
         _ -> $internalError "executeOpenSeq" "Sequence computation does not appear to be delayed"
+
       where
         go :: forall arrs a b. Arrays arrs
            => Maybe Int
@@ -587,36 +596,51 @@ executeOpenSeq mi _ma i s aenv stream = executeSeq' BaseEnv s
            -> LLVM arch [arrs]
         go (Just 0) _     _ _ _ a _      _   _            = return a
         go _        _     _ _ _ a _      _   Nothing      = return a
-        go i        sched l f s a unwrap ext (Just aenv') = do
-          index' <- async (\_ -> newRemote Z (const (index sched)))
-          if maybe True (contains' (index sched)) l
+        go i        sched l f s a unwrap ext (Just aenv') =
+          if maybe True (contains (index sched)) l
               then do
                 liftIO $ Debug.traceIO Debug.dump_sched ("sched/chunk: " ++ show (index sched))
-                (t, (a', s')) <- timed (f aenv' index' s)
-                event         <- checkpoint stream
-                liftIO $ Debug.traceIO Debug.dump_sched ("sched/chunk timing factor: " ++ show t)
-                --
-                a''           <- unwrap (Apush aenv' (AsyncR event a'))
+                index'        <- useRemoteAsync (fromFunction Z (const (index sched))) stream
+                ((a',s'), t)  <- get =<< async True (f aenv' index' s)
+                event         <- checkpoint False stream
+                a''           <- unwrap (Apush aenv' (AsyncR Nothing event a'))
                 a'''          <- useLocal a''
-                rest          <- unsafeInterleave $ do
-                  let sched' = next sched t
+                rest          <- do
+                  let sched' = next sched (fromJust t)
                   (ext', maenv) <- evalSources (indexSize (index sched')) ext
-                  go (subtract 1 <$> i) sched' l f (AsyncR event s') [] unwrap ext' maenv
+                  go (subtract 1 <$> i) sched' l f (AsyncR Nothing event s') [] unwrap ext' maenv
                 return (a''' : rest)
               else
                 return a
 
-    schedule :: SeqIndex index => index -> Schedule index
-    schedule | Just Refl <- eqT :: Maybe (index :~: Int)
-             = sequential
-             | Just Refl <- eqT :: Maybe (index :~: (Int,Int))
-             = doubleSizeChunked
-             | otherwise
-             = $internalError "executeOpenSeq" "Unknown sequence index type"
+    schedule :: index -> Schedule index
+    schedule =
+      case si of
+        SeqIndexRsingle -> sequential
+        SeqIndexRpair   -> doubleSizeChunked
 
-    evalSources :: Int
-                -> Extend (Producer index (ExecOpenAcc arch)) aenv aenv'
-                -> LLVM arch (Extend (Producer index (ExecOpenAcc arch)) aenv aenv', Maybe (AvalR arch aenv'))
+    indexSize :: index -> Int
+    indexSize x =
+      case si of
+        SeqIndexRsingle -> 1
+        SeqIndexRpair   -> snd x
+
+    initialIndex :: Int -> index
+    initialIndex u =
+      case si of
+        SeqIndexRsingle -> 0
+        SeqIndexRpair   -> (0,u)
+
+    contains :: index -> Int -> Bool
+    contains l i =
+      case si of
+        SeqIndexRsingle -> l     < i
+        SeqIndexRpair   -> fst l < i
+
+    evalSources
+        :: Int
+        -> Extend (Producer index (ExecOpenAcc arch)) aenv aenv'
+        -> LLVM arch (Extend (Producer index (ExecOpenAcc arch)) aenv aenv', Maybe (AvalR arch aenv'))
     evalSources n (PushEnv ext (Pull (Function f a))) = do
       (ext', aenv) <- evalSources n ext
       let (stop,b,a')  = f n a
@@ -630,10 +654,11 @@ executeOpenSeq mi _ma i s aenv stream = executeSeq' BaseEnv s
       = $internalError "evalSeq" "AST is at wrong stage"
 
 
-executeExtend :: Execute arch
-              => Extend (ExecOpenAcc arch) aenv aenv'
-              -> AvalR arch aenv
-              -> LLVM arch (AvalR arch aenv')
+executeExtend
+    :: Execute arch
+    => Extend (ExecOpenAcc arch) aenv aenv'
+    -> AvalR arch aenv
+    -> LLVM arch (AvalR arch aenv')
 executeExtend (PushEnv env a) aenv = do
   aenv' <- executeExtend env aenv
   a'    <- async False (executeOpenAcc a aenv')
