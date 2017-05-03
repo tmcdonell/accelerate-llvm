@@ -140,12 +140,14 @@ block event =
 query :: Event -> IO Bool
 query event = withLifetime event Event.query
 
--- | Get the time elapsed between two (completed) events
+-- | Get the time elapsed (in milliseconds) between two completed events
 --
 {-# INLINEABLE elapsedTime #-}
 elapsedTime :: Event -> Event -> IO Float
-elapsedTime start end = withLifetime start $ \s ->
-  withLifetime end $ \e -> Event.elapsedTime s e
+elapsedTime start end =
+  withLifetime start $ \s ->
+  withLifetime end   $ \e ->
+    Event.elapsedTime s e
 
 -- Debug
 -- -----

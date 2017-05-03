@@ -38,11 +38,6 @@ class Async arch where
   --
   type EventR arch
 
-  -- | Asynchronous operations can (optionally) include timing information to
-  -- record how long they took to execute.
-  --
-  type TimeR arch
-
   -- | Create a new execution stream that can be used to track (potentially
   -- parallel) computations
   --
@@ -76,10 +71,10 @@ class Async arch where
   --
   block       :: EventR arch -> LLVM arch ()
 
-  -- | Get the time which elapsed between two (completed) events. The events
-  -- must be created with timing enabled.
+  -- | Get the processor time (in seconds) which elapsed between the two
+  -- completed events. The events must be created with timing enabled.
   --
-  elapsed     :: EventR arch -> EventR arch -> LLVM arch (TimeR arch)
+  elapsed     :: EventR arch -> EventR arch -> LLVM arch Float
 
 
 -- | Wait for an asynchronous operation to complete, then return it. If timing
@@ -87,7 +82,7 @@ class Async arch where
 --
 get :: Async arch
     => AsyncR arch a
-    -> LLVM arch (a, Maybe (TimeR arch))
+    -> LLVM arch (a, Maybe Float)
 get (AsyncR me1 e2 a) = do
   block e2
   t <- maybe (return Nothing) (\e1 -> Just <$> elapsed e1 e2) me1
@@ -95,11 +90,10 @@ get (AsyncR me1 e2 a) = do
 
 -- | Execute the given operation asynchronously in a new execution stream.
 --
-async
-    :: Async arch
-    => Bool                             -- ^ enable timing information?
-    -> (StreamR arch -> LLVM arch a)    -- ^ operation to execute asynchronously
-    -> LLVM arch (AsyncR arch a)        -- ^ currently executing operation
+async :: Async arch
+      => Bool                             -- ^ enable timing information?
+      -> (StreamR arch -> LLVM arch a)    -- ^ operation to execute asynchronously
+      -> LLVM arch (AsyncR arch a)        -- ^ currently executing operation
 async timed f = do
   s   <- fork
   e1  <- if timed then Just <$> checkpoint timed s

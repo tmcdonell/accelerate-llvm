@@ -41,7 +41,6 @@ type Async a = AsyncR PTX a
 instance A.Async PTX where
   type StreamR PTX = Stream
   type EventR  PTX = Event
-  type TimeR   PTX = Float
 
   {-# INLINEABLE fork #-}
   fork =
@@ -64,6 +63,7 @@ instance A.Async PTX where
     liftIO $! Event.block event
 
   {-# INLINEABLE elapsed #-}
-  elapsed start end =
-    liftIO $! Event.elapsedTime start end
+  elapsed start end = do
+    ms <- liftIO $! Event.elapsedTime start end
+    return (ms * 1000)
 

@@ -39,8 +39,7 @@ type Event   = A.EventR  Native
 --
 instance A.Async Native where
   type StreamR Native = ()
-  type EventR  Native = Maybe (UTCTime, Integer)  -- walltime, cputime
-  type TimeR   Native = (Float, Float)            -- walltime, cputime (s)
+  type EventR  Native = Maybe Integer -- CPU time in picoseconds
 
   {-# INLINE fork #-}
   fork = return ()
@@ -48,12 +47,14 @@ instance A.Async Native where
   {-# INLINE join #-}
   join () = return ()
 
+  -- TLM: This is really measuring the time from when the operation was added to
+  -- the scheduling DAG, not the time from which execution commenced. This will
+  -- be problematic once scheduling is relaxed from the current bulk-synchronous
+  -- method.
+  --
   {-# INLINEABLE checkpoint #-}
   checkpoint False () = return Nothing
-  checkpoint True  () = liftIO $ do
-    wall <- getCurrentTime
-    cpu  <- getCPUTime
-    return (Just (wall,cpu))
+  checkpoint True  () = Just <$> getCPUTime
 
   {-# INLINE after #-}
   after () _ = return ()
@@ -61,11 +62,11 @@ instance A.Async Native where
   {-# INLINE block #-}
   block _ = return ()
 
+  -- TLM: The elapsed time here is the total CPU time, not just the time
+  -- actually spent executing. It might be worthwhile doing something akin to
+  -- the monitoring infrastructure to get the more accurate result.
+  --
   {-# INLINEABLE elapsed #-}
-  elapsed (Just (wall0, cpu0)) (Just (wall1, cpu1)) =
-    let wallTime = realToFrac (diffUTCTime wall1 wall0)
-        cpuTime  = fromIntegral (cpu1 - cpu0) * 1E-12
-    in return (wallTime, cpuTime)
-  elapsed _ _ =
-    $internalError "elapsed" "timing not enabled for selected events"
+  elapsed (Just cpu0) (Just cpu1) = return $ fromIntegral (cpu1 - cpu0) * 1E-12
+  elapsed _           _           = $internalError "elapsed" "timing not enabled for selected events"
 
