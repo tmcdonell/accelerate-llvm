@@ -502,28 +502,25 @@ stencil12DOp _ kernel@NativeR{..} gamma aenv stream arr = do
           (Z :. y :. x):_ -> (-x, -y)
       (width, height) = case (shape arr) of
           (Z :. y :. x) -> (x, y)
+      fillType = if ncpu == 1
+        then fillS -- Sequential stencil operation
+        else fillP -- Parallel stencil operation
   --
-  if ncpu == 1
-    then liftIO $ do
-      -- Sequential stencil operation
-      out <- allocateArray $ shape arr
-      let sidesParams  = (borderWidth, borderHeight, width, height, out)
-      let middleParams = (borderWidth, width - borderWidth, out)
-      --
-      execute executableR "stencil2DMiddle" $ \f ->
-        executeOp 1 fillS f gamma aenv (IE borderHeight (height - borderHeight)) middleParams
-      -- Include the corners in these sides.
-      execute executableR "stencil2DLeftRight" $ \f ->
-        executeOp 1 fillS f gamma aenv (IE 0 height) sidesParams
-      -- Exclude the corners from these sides.
-      execute executableR "stencil2DTopBottom" $ \f ->
-        executeOp 1 fillS f gamma aenv (IE borderWidth (width - borderWidth)) sidesParams
-      --
-      return out
-
-    else
-      -- Parallel stencil operation
-      stencil1AllOp kernel gamma aenv stream arr
+  liftIO $ do
+    out <- allocateArray $ shape arr
+    let sidesParams  = (borderWidth, borderHeight, width, height, out)
+    let middleParams = (borderWidth, width - borderWidth, out)
+    --
+    execute executableR "stencil2DMiddle" $ \f ->
+      executeOp 1 fillType f gamma aenv (IE borderHeight (height - borderHeight)) middleParams
+    -- Include the corners in these sides.
+    execute executableR "stencil2DLeftRight" $ \f ->
+      executeOp 1 fillS f gamma aenv (IE 0 height) sidesParams
+    -- Exclude the corners from these sides.
+    execute executableR "stencil2DTopBottom" $ \f ->
+      executeOp 1 fillS f gamma aenv (IE borderWidth (width - borderWidth)) sidesParams
+    --
+    return out
 
 
 stencil2Op
