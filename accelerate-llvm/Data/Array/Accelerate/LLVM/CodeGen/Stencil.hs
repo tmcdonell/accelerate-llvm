@@ -161,6 +161,26 @@ stencilAccess mbndy arr =
            <*> goR s9 (rf'   4)  ix'
 
 
+stencilAccesses
+    :: Stencil sh e stencil
+    => Maybe (Boundary (IR e))
+    -> IRArray (Array sh e)
+    -> IR sh
+    -> CodeGen (IR stencil, IR stencil, IR stencil, IR stencil)
+stencilAccesses mbndy arr =
+  case mbndy of
+    Nothing   -> goR stencil (inbounds arr)
+    Just bndy -> goR stencil (bounded bndy arr)
+  where
+    -- Base cases, nothing interesting to do here since we know the lower
+    -- dimension is Z.
+    --
+    goR :: StencilR sh e stencil
+        -> (IR sh -> CodeGen (IR e))
+        -> IR sh -> CodeGen (IR stencil, IR stencil, IR stencil, IR stencil)
+    goR = undefined
+
+
 -- Assume that every index is inbounds of the array (bounds checks or boundary
 -- conditions).
 --
