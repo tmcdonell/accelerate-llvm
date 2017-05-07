@@ -510,9 +510,10 @@ stencil12DOp _ kernel@NativeR{..} gamma aenv stream arr = do
     out <- allocateArray $ shape arr
     let sidesParams  = (borderWidth, borderHeight, width, height, out)
     let middleParams = (borderWidth, width - borderWidth, out)
+    let rowsPerRun   = height `div` ncpu * 10
     --
     execute executableR "stencil2DMiddle" $ \f ->
-      executeOp 1 fillType f gamma aenv (IE borderHeight (height - borderHeight)) middleParams
+      executeOp rowsPerRun fillType f gamma aenv (IE borderHeight (height - borderHeight)) middleParams
     -- Include the corners in these sides.
     execute executableR "stencil2DLeftRight" $ \f ->
       executeOp 1 fillS f gamma aenv (IE 0 height) sidesParams
