@@ -50,115 +50,115 @@ stencilAccess mbndy arr =
   case mbndy of
     Nothing   -> goR stencil (inbounds arr)
     Just bndy -> goR stencil (bounded bndy arr)
-  where
-    -- Base cases, nothing interesting to do here since we know the lower
-    -- dimension is Z.
-    --
-    goR :: StencilR sh e stencil -> (IR sh -> CodeGen (IR e)) -> IR sh -> CodeGen (IR stencil)
-    goR StencilRunit3 rf ix
-      = let z :. i = unindex ix
-            rf' d  = do d' <- A.add numType i (int d)
-                        rf (index z d')
-        in
-        tup3 <$> rf' (-1)
-             <*> rf   ix
-             <*> rf'   1
 
-    goR StencilRunit5 rf ix
-      = let z :. i = unindex ix
-            rf' d  = do d' <- A.add numType i (int d)
-                        rf (index z d')
-        in
-        tup5 <$> rf' (-2)
-             <*> rf' (-1)
-             <*> rf   ix
-             <*> rf'   1
-             <*> rf'   2
+-- Base cases, nothing interesting to do here since we know the lower
+-- dimension is Z.
+--
+goR :: StencilR sh e stencil -> (IR sh -> CodeGen (IR e)) -> IR sh -> CodeGen (IR stencil)
+goR StencilRunit3 rf ix
+  = let z :. i = unindex ix
+        rf' d  = do d' <- A.add numType i (int d)
+                    rf (index z d')
+    in
+    tup3 <$> rf' (-1)
+         <*> rf   ix
+         <*> rf'   1
 
-    goR StencilRunit7 rf ix
-      = let z :. i = unindex ix
-            rf' d  = do d' <- A.add numType i (int d)
-                        rf (index z d')
-        in
-        tup7 <$> rf' (-3)
-             <*> rf' (-2)
-             <*> rf' (-1)
-             <*> rf   ix
-             <*> rf'   1
-             <*> rf'   2
-             <*> rf'   3
+goR StencilRunit5 rf ix
+  = let z :. i = unindex ix
+        rf' d  = do d' <- A.add numType i (int d)
+                    rf (index z d')
+    in
+    tup5 <$> rf' (-2)
+         <*> rf' (-1)
+         <*> rf   ix
+         <*> rf'   1
+         <*> rf'   2
 
-    goR StencilRunit9 rf ix
-      = let z :. i = unindex ix
-            rf' d  = do d' <- A.add numType i (int d)
-                        rf (index z d')
-        in
-        tup9 <$> rf' (-4)
-             <*> rf' (-3)
-             <*> rf' (-2)
-             <*> rf' (-1)
-             <*> rf   ix
-             <*> rf'   1
-             <*> rf'   2
-             <*> rf'   3
-             <*> rf'   4
+goR StencilRunit7 rf ix
+  = let z :. i = unindex ix
+        rf' d  = do d' <- A.add numType i (int d)
+                    rf (index z d')
+    in
+    tup7 <$> rf' (-3)
+         <*> rf' (-2)
+         <*> rf' (-1)
+         <*> rf   ix
+         <*> rf'   1
+         <*> rf'   2
+         <*> rf'   3
 
-    -- Recursive cases. Note that because the stencil pattern is defined with
-    -- a cons ordering, whereas shapes (indices) are defined as a snoc list,
-    -- when we recurse on the stencil structure we must manipulate the
-    -- _innermost_ index component
-    --
-    goR (StencilRtup3 s1 s2 s3) rf ix =
-      let (i, ix') = uncons ix
-          rf' 0 ds = rf (cons i ds)
-          rf' d ds = do d' <- A.add numType i (int d)
-                        rf (cons d' ds)
-      in
-      tup3 <$> goR s1 (rf' (-1)) ix'
-           <*> goR s2 (rf'   0)  ix'
-           <*> goR s3 (rf'   1)  ix'
+goR StencilRunit9 rf ix
+  = let z :. i = unindex ix
+        rf' d  = do d' <- A.add numType i (int d)
+                    rf (index z d')
+    in
+    tup9 <$> rf' (-4)
+         <*> rf' (-3)
+         <*> rf' (-2)
+         <*> rf' (-1)
+         <*> rf   ix
+         <*> rf'   1
+         <*> rf'   2
+         <*> rf'   3
+         <*> rf'   4
 
-    goR (StencilRtup5 s1 s2 s3 s4 s5) rf ix =
-      let (i, ix') = uncons ix
-          rf' 0 ds = rf (cons i ds)
-          rf' d ds = do d' <- A.add numType i (int d)
-                        rf (cons d' ds)
-      in
-      tup5 <$> goR s1 (rf' (-2)) ix'
-           <*> goR s2 (rf' (-1)) ix'
-           <*> goR s3 (rf'   0)  ix'
-           <*> goR s4 (rf'   1)  ix'
-           <*> goR s5 (rf'   2)  ix'
+-- Recursive cases. Note that because the stencil pattern is defined with
+-- a cons ordering, whereas shapes (indices) are defined as a snoc list,
+-- when we recurse on the stencil structure we must manipulate the
+-- _innermost_ index component
+--
+goR (StencilRtup3 s1 s2 s3) rf ix =
+  let (i, ix') = uncons ix
+      rf' 0 ds = rf (cons i ds)
+      rf' d ds = do d' <- A.add numType i (int d)
+                    rf (cons d' ds)
+  in
+  tup3 <$> goR s1 (rf' (-1)) ix'
+       <*> goR s2 (rf'   0)  ix'
+       <*> goR s3 (rf'   1)  ix'
 
-    goR (StencilRtup7 s1 s2 s3 s4 s5 s6 s7) rf ix =
-      let (i, ix') = uncons ix
-          rf' 0 ds = rf (cons i ds)
-          rf' d ds = do d' <- A.add numType i (int d)
-                        rf (cons d' ds)
-      in
-      tup7 <$> goR s1 (rf' (-3)) ix'
-           <*> goR s2 (rf' (-2)) ix'
-           <*> goR s3 (rf' (-1)) ix'
-           <*> goR s4 (rf'   0)  ix'
-           <*> goR s5 (rf'   1)  ix'
-           <*> goR s6 (rf'   2)  ix'
-           <*> goR s7 (rf'   3)  ix'
+goR (StencilRtup5 s1 s2 s3 s4 s5) rf ix =
+  let (i, ix') = uncons ix
+      rf' 0 ds = rf (cons i ds)
+      rf' d ds = do d' <- A.add numType i (int d)
+                    rf (cons d' ds)
+  in
+  tup5 <$> goR s1 (rf' (-2)) ix'
+       <*> goR s2 (rf' (-1)) ix'
+       <*> goR s3 (rf'   0)  ix'
+       <*> goR s4 (rf'   1)  ix'
+       <*> goR s5 (rf'   2)  ix'
 
-    goR (StencilRtup9 s1 s2 s3 s4 s5 s6 s7 s8 s9) rf ix =
-      let (i, ix') = uncons ix
-          rf' 0 ds = rf (cons i ds)
-          rf' d ds = do d' <- A.add numType i (int d)
-                        rf (cons d' ds)
-      in
-      tup9 <$> goR s1 (rf' (-4)) ix'
-           <*> goR s2 (rf' (-3)) ix'
-           <*> goR s3 (rf' (-2)) ix'
-           <*> goR s4 (rf' (-1)) ix'
-           <*> goR s5 (rf'   0)  ix'
-           <*> goR s6 (rf'   1)  ix'
-           <*> goR s7 (rf'   2)  ix'
-           <*> goR s8 (rf'   3)  ix'
-           <*> goR s9 (rf'   4)  ix'
+goR (StencilRtup7 s1 s2 s3 s4 s5 s6 s7) rf ix =
+  let (i, ix') = uncons ix
+      rf' 0 ds = rf (cons i ds)
+      rf' d ds = do d' <- A.add numType i (int d)
+                    rf (cons d' ds)
+  in
+  tup7 <$> goR s1 (rf' (-3)) ix'
+       <*> goR s2 (rf' (-2)) ix'
+       <*> goR s3 (rf' (-1)) ix'
+       <*> goR s4 (rf'   0)  ix'
+       <*> goR s5 (rf'   1)  ix'
+       <*> goR s6 (rf'   2)  ix'
+       <*> goR s7 (rf'   3)  ix'
+
+goR (StencilRtup9 s1 s2 s3 s4 s5 s6 s7 s8 s9) rf ix =
+  let (i, ix') = uncons ix
+      rf' 0 ds = rf (cons i ds)
+      rf' d ds = do d' <- A.add numType i (int d)
+                    rf (cons d' ds)
+  in
+  tup9 <$> goR s1 (rf' (-4)) ix'
+       <*> goR s2 (rf' (-3)) ix'
+       <*> goR s3 (rf' (-2)) ix'
+       <*> goR s4 (rf' (-1)) ix'
+       <*> goR s5 (rf'   0)  ix'
+       <*> goR s6 (rf'   1)  ix'
+       <*> goR s7 (rf'   2)  ix'
+       <*> goR s8 (rf'   3)  ix'
+       <*> goR s9 (rf'   4)  ix'
 
 
 stencilAccesses
@@ -169,16 +169,272 @@ stencilAccesses
     -> CodeGen (IR stencil, IR stencil, IR stencil, IR stencil)
 stencilAccesses mbndy arr =
   case mbndy of
-    Nothing   -> goR stencil (inbounds arr)
-    Just bndy -> goR stencil (bounded bndy arr)
+    Nothing   -> goR' stencil (inbounds arr)
+    Just bndy -> goR' stencil (bounded bndy arr)
   where
     -- Base cases, nothing interesting to do here since we know the lower
     -- dimension is Z.
     --
-    goR :: StencilR sh e stencil
+    goR' :: StencilR sh e stencil
         -> (IR sh -> CodeGen (IR e))
-        -> IR sh -> CodeGen (IR stencil, IR stencil, IR stencil, IR stencil)
-    goR = undefined
+        -> IR sh
+        -> CodeGen (IR stencil, IR stencil, IR stencil, IR stencil)
+    goR' StencilRunit3 rf ix
+      = let z :. i = unindex ix
+            rf' d  = do d' <- A.add numType i (int d)
+                        rf (index z d')
+        in do
+        x0 <- tup3 <$> rf' (-1)
+                   <*> rf   ix
+                   <*> rf'   1
+        x1 <- tup3 <$> rf   ix
+                   <*> rf'   1
+                   <*> rf'   2
+        x2 <- tup3 <$> rf'   1
+                   <*> rf'   2
+                   <*> rf'   3
+        x3 <- tup3 <$> rf'   2
+                   <*> rf'   3
+                   <*> rf'   4
+        return (x0, x1, x2, x3)
+
+    goR' StencilRunit5 rf ix
+      = let z :. i = unindex ix
+            rf' d  = do d' <- A.add numType i (int d)
+                        rf (index z d')
+        in do
+        x0 <- tup5 <$> rf' (-2)
+                   <*> rf' (-1)
+                   <*> rf   ix
+                   <*> rf'   1
+                   <*> rf'   2
+        x1 <- tup5 <$> rf' (-1)
+                   <*> rf   ix
+                   <*> rf'   1
+                   <*> rf'   2
+                   <*> rf'   3
+        x2 <- tup5 <$> rf   ix
+                   <*> rf'   1
+                   <*> rf'   2
+                   <*> rf'   3
+                   <*> rf'   4
+        x3 <- tup5 <$> rf'   1
+                   <*> rf'   2
+                   <*> rf'   3
+                   <*> rf'   4
+                   <*> rf'   5
+        return (x0, x1, x2, x3)
+
+    goR' StencilRunit7 rf ix
+      = let z :. i = unindex ix
+            rf' d  = do d' <- A.add numType i (int d)
+                        rf (index z d')
+        in do
+        x0 <- tup7 <$> rf' (-3)
+                   <*> rf' (-2)
+                   <*> rf' (-1)
+                   <*> rf   ix
+                   <*> rf'   1
+                   <*> rf'   2
+                   <*> rf'   3
+        x1 <- tup7 <$> rf' (-2)
+                   <*> rf' (-1)
+                   <*> rf   ix
+                   <*> rf'   1
+                   <*> rf'   2
+                   <*> rf'   3
+                   <*> rf'   4
+        x2 <- tup7 <$> rf' (-1)
+                   <*> rf   ix
+                   <*> rf'   1
+                   <*> rf'   2
+                   <*> rf'   3
+                   <*> rf'   4
+                   <*> rf'   5
+        x3 <- tup7 <$> rf   ix
+                   <*> rf'   1
+                   <*> rf'   2
+                   <*> rf'   3
+                   <*> rf'   4
+                   <*> rf'   5
+                   <*> rf'   6
+        return (x0, x1, x2, x3)
+
+    goR' StencilRunit9 rf ix
+      = let z :. i = unindex ix
+            rf' d  = do d' <- A.add numType i (int d)
+                        rf (index z d')
+        in do
+        x0 <- tup9 <$> rf' (-4)
+                   <*> rf' (-3)
+                   <*> rf' (-2)
+                   <*> rf' (-1)
+                   <*> rf   ix
+                   <*> rf'   1
+                   <*> rf'   2
+                   <*> rf'   3
+                   <*> rf'   4
+        x1 <- tup9 <$> rf' (-3)
+                   <*> rf' (-2)
+                   <*> rf' (-1)
+                   <*> rf   ix
+                   <*> rf'   1
+                   <*> rf'   2
+                   <*> rf'   3
+                   <*> rf'   4
+                   <*> rf'   5
+        x2 <- tup9 <$> rf' (-2)
+                   <*> rf' (-1)
+                   <*> rf   ix
+                   <*> rf'   1
+                   <*> rf'   2
+                   <*> rf'   3
+                   <*> rf'   4
+                   <*> rf'   5
+                   <*> rf'   6
+        x3 <- tup9 <$> rf' (-1)
+                   <*> rf   ix
+                   <*> rf'   1
+                   <*> rf'   2
+                   <*> rf'   3
+                   <*> rf'   4
+                   <*> rf'   5
+                   <*> rf'   6
+                   <*> rf'   7
+        return (x0, x1, x2, x3)
+
+    -- Recursive cases. Note that because the stencil pattern is defined with
+    -- a cons ordering, whereas shapes (indices) are defined as a snoc list,
+    -- when we recurse on the stencil structure we must manipulate the
+    -- _innermost_ index component
+    --
+    goR' (StencilRtup3 s1 s2 s3) rf ix =
+      let (i, ix') = uncons ix
+          rf' 0 ds = rf (cons i ds)
+          rf' d ds = do d' <- A.add numType i (int d)
+                        rf (cons d' ds)
+      in do
+      x0 <- tup3 <$> goR s1 (rf' (-1)) ix'
+                 <*> goR s2 (rf'   0)  ix'
+                 <*> goR s3 (rf'   1)  ix'
+      x1 <- tup3 <$> goR s1 (rf'   0)  ix'
+                 <*> goR s2 (rf'   1)  ix'
+                 <*> goR s3 (rf'   2)  ix'
+      x2 <- tup3 <$> goR s1 (rf'   1)  ix'
+                 <*> goR s2 (rf'   2)  ix'
+                 <*> goR s3 (rf'   3)  ix'
+      x3 <- tup3 <$> goR s1 (rf'   2)  ix'
+                 <*> goR s2 (rf'   3)  ix'
+                 <*> goR s3 (rf'   4)  ix'
+      return (x0, x1, x2, x3)
+
+    goR' (StencilRtup5 s1 s2 s3 s4 s5) rf ix =
+      let (i, ix') = uncons ix
+          rf' 0 ds = rf (cons i ds)
+          rf' d ds = do d' <- A.add numType i (int d)
+                        rf (cons d' ds)
+      in do
+      x0 <- tup5 <$> goR s1 (rf' (-2)) ix'
+                 <*> goR s2 (rf' (-1)) ix'
+                 <*> goR s3 (rf'   0)  ix'
+                 <*> goR s4 (rf'   1)  ix'
+                 <*> goR s5 (rf'   2)  ix'
+      x1 <- tup5 <$> goR s1 (rf' (-1)) ix'
+                 <*> goR s2 (rf'   0)  ix'
+                 <*> goR s3 (rf'   1)  ix'
+                 <*> goR s4 (rf'   2)  ix'
+                 <*> goR s5 (rf'   3)  ix'
+      x2 <- tup5 <$> goR s1 (rf'   0)  ix'
+                 <*> goR s2 (rf'   1)  ix'
+                 <*> goR s3 (rf'   2)  ix'
+                 <*> goR s4 (rf'   3)  ix'
+                 <*> goR s5 (rf'   4)  ix'
+      x3 <- tup5 <$> goR s1 (rf'   1)  ix'
+                 <*> goR s2 (rf'   2)  ix'
+                 <*> goR s3 (rf'   3)  ix'
+                 <*> goR s4 (rf'   4)  ix'
+                 <*> goR s5 (rf'   5)  ix'
+      return (x0, x1, x2, x3)
+
+    -- goR' (StencilRtup7 s1 s2 s3 s4 s5 s6 s7) rf ix =
+    --   let (i, ix') = uncons ix
+    --       rf' 0 ds = rf (cons i ds)
+    --       rf' d ds = do d' <- A.add numType i (int d)
+    --                     rf (cons d' ds)
+    --   in do
+    --   x0 <- tup7 <$> goR s1 (rf' (-3)) ix'
+    --              <*> goR s2 (rf' (-2)) ix'
+    --              <*> goR s3 (rf' (-1)) ix'
+    --              <*> goR s4 (rf'   0)  ix'
+    --              <*> goR s5 (rf'   1)  ix'
+    --              <*> goR s6 (rf'   2)  ix'
+    --              <*> goR s7 (rf'   3)  ix'
+    --   x1 <- tup7 <$> goR s1 (rf' (-2)) ix'
+    --              <*> goR s3 (rf' (-1)) ix'
+    --              <*> goR s4 (rf'   0)  ix'
+    --              <*> goR s5 (rf'   1)  ix'
+    --              <*> goR s6 (rf'   2)  ix'
+    --              <*> goR s7 (rf'   3)  ix'
+    --              <*> goR s2 (rf'   4)  ix'
+    --   x2 <- tup7 <$> goR s1 (rf' (-1)) ix'
+    --              <*> goR s4 (rf'   0)  ix'
+    --              <*> goR s5 (rf'   1)  ix'
+    --              <*> goR s6 (rf'   2)  ix'
+    --              <*> goR s7 (rf'   3)  ix'
+    --              <*> goR s2 (rf'   4)  ix'
+    --              <*> goR s3 (rf'   5)  ix'
+    --   x3 <- tup7 <$> goR s1 (rf'   0)  ix'
+    --              <*> goR s5 (rf'   1)  ix'
+    --              <*> goR s6 (rf'   2)  ix'
+    --              <*> goR s7 (rf'   3)  ix'
+    --              <*> goR s4 (rf'   4)  ix'
+    --              <*> goR s3 (rf'   5)  ix'
+    --              <*> goR s2 (rf'   6)  ix'
+    --   return (x0, x1, x2, x3)
+
+    -- goR' (StencilRtup9 s1 s2 s3 s4 s5 s6 s7 s8 s9) rf ix =
+    --   let (i, ix') = uncons ix
+    --       rf' 0 ds = rf (cons i ds)
+    --       rf' d ds = do d' <- A.add numType i (int d)
+    --                     rf (cons d' ds)
+    --   in do
+    --   x0 <- tup9 <$> goR s1 (rf' (-4)) ix'
+    --              <*> goR s2 (rf' (-3)) ix'
+    --              <*> goR s3 (rf' (-2)) ix'
+    --              <*> goR s4 (rf' (-1)) ix'
+    --              <*> goR s5 (rf'   0)  ix'
+    --              <*> goR s6 (rf'   1)  ix'
+    --              <*> goR s7 (rf'   2)  ix'
+    --              <*> goR s8 (rf'   3)  ix'
+    --              <*> goR s9 (rf'   4)  ix'
+    --   x1 <- tup9 <$> goR s1 (rf' (-3)) ix'
+    --              <*> goR s3 (rf' (-2)) ix'
+    --              <*> goR s4 (rf' (-1)) ix'
+    --              <*> goR s5 (rf'   0)  ix'
+    --              <*> goR s6 (rf'   1)  ix'
+    --              <*> goR s7 (rf'   2)  ix'
+    --              <*> goR s8 (rf'   3)  ix'
+    --              <*> goR s9 (rf'   4)  ix'
+    --              <*> goR s2 (rf'   5)  ix'
+    --   x2 <- tup9 <$> goR s1 (rf' (-2)) ix'
+    --              <*> goR s4 (rf' (-1)) ix'
+    --              <*> goR s5 (rf'   0)  ix'
+    --              <*> goR s6 (rf'   1)  ix'
+    --              <*> goR s7 (rf'   2)  ix'
+    --              <*> goR s8 (rf'   3)  ix'
+    --              <*> goR s9 (rf'   4)  ix'
+    --              <*> goR s3 (rf'   5)  ix'
+    --              <*> goR s2 (rf'   6)  ix'
+    --   x3 <- tup9 <$> goR s1 (rf' (-1)) ix'
+    --              <*> goR s5 (rf'   0)  ix'
+    --              <*> goR s6 (rf'   1)  ix'
+    --              <*> goR s7 (rf'   2)  ix'
+    --              <*> goR s8 (rf'   3)  ix'
+    --              <*> goR s9 (rf'   4)  ix'
+    --              <*> goR s2 (rf'   5)  ix'
+    --              <*> goR s3 (rf'   6)  ix'
+    --              <*> goR s4 (rf'   7)  ix'
+    --   return (x0, x1, x2, x3)
 
 
 -- Assume that every index is inbounds of the array (bounds checks or boundary
