@@ -356,85 +356,85 @@ stencilAccesses mbndy arr =
                  <*> goR s5 (rf'   5)  ix'
       return (x0, x1, x2, x3)
 
-    -- goR' (StencilRtup7 s1 s2 s3 s4 s5 s6 s7) rf ix =
-    --   let (i, ix') = uncons ix
-    --       rf' 0 ds = rf (cons i ds)
-    --       rf' d ds = do d' <- A.add numType i (int d)
-    --                     rf (cons d' ds)
-    --   in do
-    --   x0 <- tup7 <$> goR s1 (rf' (-3)) ix'
-    --              <*> goR s2 (rf' (-2)) ix'
-    --              <*> goR s3 (rf' (-1)) ix'
-    --              <*> goR s4 (rf'   0)  ix'
-    --              <*> goR s5 (rf'   1)  ix'
-    --              <*> goR s6 (rf'   2)  ix'
-    --              <*> goR s7 (rf'   3)  ix'
-    --   x1 <- tup7 <$> goR s1 (rf' (-2)) ix'
-    --              <*> goR s3 (rf' (-1)) ix'
-    --              <*> goR s4 (rf'   0)  ix'
-    --              <*> goR s5 (rf'   1)  ix'
-    --              <*> goR s6 (rf'   2)  ix'
-    --              <*> goR s7 (rf'   3)  ix'
-    --              <*> goR s2 (rf'   4)  ix'
-    --   x2 <- tup7 <$> goR s1 (rf' (-1)) ix'
-    --              <*> goR s4 (rf'   0)  ix'
-    --              <*> goR s5 (rf'   1)  ix'
-    --              <*> goR s6 (rf'   2)  ix'
-    --              <*> goR s7 (rf'   3)  ix'
-    --              <*> goR s2 (rf'   4)  ix'
-    --              <*> goR s3 (rf'   5)  ix'
-    --   x3 <- tup7 <$> goR s1 (rf'   0)  ix'
-    --              <*> goR s5 (rf'   1)  ix'
-    --              <*> goR s6 (rf'   2)  ix'
-    --              <*> goR s7 (rf'   3)  ix'
-    --              <*> goR s4 (rf'   4)  ix'
-    --              <*> goR s3 (rf'   5)  ix'
-    --              <*> goR s2 (rf'   6)  ix'
-    --   return (x0, x1, x2, x3)
+    goR' (StencilRtup7 s1 s2 s3 s4 s5 s6 s7) rf ix =
+      let (i, ix') = uncons ix
+          rf' 0 ds = rf (cons i ds)
+          rf' d ds = do d' <- A.add numType i (int d)
+                        rf (cons d' ds)
+      in do
+      x0 <- tup7 <$> goR s1 (rf' (-3)) ix'
+                 <*> goR s2 (rf' (-2)) ix'
+                 <*> goR s3 (rf' (-1)) ix'
+                 <*> goR s4 (rf'   0)  ix'
+                 <*> goR s5 (rf'   1)  ix'
+                 <*> goR s6 (rf'   2)  ix'
+                 <*> goR s7 (rf'   3)  ix'
+      x1 <- tup7 <$> goR s1 (rf' (-2)) ix'
+                 <*> goR s2 (rf' (-1)) ix'
+                 <*> goR s3 (rf'   0)  ix'
+                 <*> goR s4 (rf'   1)  ix'
+                 <*> goR s5 (rf'   2)  ix'
+                 <*> goR s6 (rf'   3)  ix'
+                 <*> goR s7 (rf'   4)  ix'
+      x2 <- tup7 <$> goR s1 (rf' (-1)) ix'
+                 <*> goR s2 (rf'   0)  ix'
+                 <*> goR s3 (rf'   1)  ix'
+                 <*> goR s4 (rf'   2)  ix'
+                 <*> goR s5 (rf'   3)  ix'
+                 <*> goR s6 (rf'   4)  ix'
+                 <*> goR s7 (rf'   5)  ix'
+      x3 <- tup7 <$> goR s1 (rf'   0)  ix'
+                 <*> goR s2 (rf'   1)  ix'
+                 <*> goR s3 (rf'   2)  ix'
+                 <*> goR s4 (rf'   3)  ix'
+                 <*> goR s5 (rf'   4)  ix'
+                 <*> goR s6 (rf'   5)  ix'
+                 <*> goR s7 (rf'   6)  ix'
+      return (x0, x1, x2, x3)
 
-    -- goR' (StencilRtup9 s1 s2 s3 s4 s5 s6 s7 s8 s9) rf ix =
-    --   let (i, ix') = uncons ix
-    --       rf' 0 ds = rf (cons i ds)
-    --       rf' d ds = do d' <- A.add numType i (int d)
-    --                     rf (cons d' ds)
-    --   in do
-    --   x0 <- tup9 <$> goR s1 (rf' (-4)) ix'
-    --              <*> goR s2 (rf' (-3)) ix'
-    --              <*> goR s3 (rf' (-2)) ix'
-    --              <*> goR s4 (rf' (-1)) ix'
-    --              <*> goR s5 (rf'   0)  ix'
-    --              <*> goR s6 (rf'   1)  ix'
-    --              <*> goR s7 (rf'   2)  ix'
-    --              <*> goR s8 (rf'   3)  ix'
-    --              <*> goR s9 (rf'   4)  ix'
-    --   x1 <- tup9 <$> goR s1 (rf' (-3)) ix'
-    --              <*> goR s3 (rf' (-2)) ix'
-    --              <*> goR s4 (rf' (-1)) ix'
-    --              <*> goR s5 (rf'   0)  ix'
-    --              <*> goR s6 (rf'   1)  ix'
-    --              <*> goR s7 (rf'   2)  ix'
-    --              <*> goR s8 (rf'   3)  ix'
-    --              <*> goR s9 (rf'   4)  ix'
-    --              <*> goR s2 (rf'   5)  ix'
-    --   x2 <- tup9 <$> goR s1 (rf' (-2)) ix'
-    --              <*> goR s4 (rf' (-1)) ix'
-    --              <*> goR s5 (rf'   0)  ix'
-    --              <*> goR s6 (rf'   1)  ix'
-    --              <*> goR s7 (rf'   2)  ix'
-    --              <*> goR s8 (rf'   3)  ix'
-    --              <*> goR s9 (rf'   4)  ix'
-    --              <*> goR s3 (rf'   5)  ix'
-    --              <*> goR s2 (rf'   6)  ix'
-    --   x3 <- tup9 <$> goR s1 (rf' (-1)) ix'
-    --              <*> goR s5 (rf'   0)  ix'
-    --              <*> goR s6 (rf'   1)  ix'
-    --              <*> goR s7 (rf'   2)  ix'
-    --              <*> goR s8 (rf'   3)  ix'
-    --              <*> goR s9 (rf'   4)  ix'
-    --              <*> goR s2 (rf'   5)  ix'
-    --              <*> goR s3 (rf'   6)  ix'
-    --              <*> goR s4 (rf'   7)  ix'
-    --   return (x0, x1, x2, x3)
+    goR' (StencilRtup9 s1 s2 s3 s4 s5 s6 s7 s8 s9) rf ix =
+      let (i, ix') = uncons ix
+          rf' 0 ds = rf (cons i ds)
+          rf' d ds = do d' <- A.add numType i (int d)
+                        rf (cons d' ds)
+      in do
+      x0 <- tup9 <$> goR s1 (rf' (-4)) ix'
+                 <*> goR s2 (rf' (-3)) ix'
+                 <*> goR s3 (rf' (-2)) ix'
+                 <*> goR s4 (rf' (-1)) ix'
+                 <*> goR s5 (rf'   0)  ix'
+                 <*> goR s6 (rf'   1)  ix'
+                 <*> goR s7 (rf'   2)  ix'
+                 <*> goR s8 (rf'   3)  ix'
+                 <*> goR s9 (rf'   4)  ix'
+      x1 <- tup9 <$> goR s1 (rf' (-3)) ix'
+                 <*> goR s2 (rf' (-2)) ix'
+                 <*> goR s3 (rf' (-1)) ix'
+                 <*> goR s4 (rf'   0)  ix'
+                 <*> goR s5 (rf'   1)  ix'
+                 <*> goR s6 (rf'   2)  ix'
+                 <*> goR s7 (rf'   3)  ix'
+                 <*> goR s8 (rf'   4)  ix'
+                 <*> goR s9 (rf'   5)  ix'
+      x2 <- tup9 <$> goR s1 (rf' (-2)) ix'
+                 <*> goR s2 (rf' (-1)) ix'
+                 <*> goR s3 (rf'   0)  ix'
+                 <*> goR s4 (rf'   1)  ix'
+                 <*> goR s5 (rf'   2)  ix'
+                 <*> goR s6 (rf'   3)  ix'
+                 <*> goR s7 (rf'   4)  ix'
+                 <*> goR s8 (rf'   5)  ix'
+                 <*> goR s9 (rf'   6)  ix'
+      x3 <- tup9 <$> goR s1 (rf' (-1)) ix'
+                 <*> goR s2 (rf'   0)  ix'
+                 <*> goR s3 (rf'   1)  ix'
+                 <*> goR s4 (rf'   2)  ix'
+                 <*> goR s5 (rf'   3)  ix'
+                 <*> goR s6 (rf'   4)  ix'
+                 <*> goR s7 (rf'   5)  ix'
+                 <*> goR s8 (rf'   6)  ix'
+                 <*> goR s9 (rf'   7)  ix'
+      return (x0, x1, x2, x3)
 
 
 -- Assume that every index is inbounds of the array (bounds checks or boundary
