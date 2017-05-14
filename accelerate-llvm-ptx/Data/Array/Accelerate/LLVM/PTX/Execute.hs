@@ -26,6 +26,7 @@ module Data.Array.Accelerate.LLVM.PTX.Execute (
 -- accelerate
 import Data.Array.Accelerate.AST
 import Data.Array.Accelerate.Analysis.Match
+import Data.Array.Accelerate.Analysis.Stencil
 import Data.Array.Accelerate.Array.Sugar
 import Data.Array.Accelerate.Error
 import Data.Array.Accelerate.Lifetime
@@ -548,8 +549,33 @@ stencil12DOp
     -> Stream
     -> Array DIM2 a
     -> LLVM PTX (Array DIM2 b)
-stencil12DOp =
-  undefined
+stencil12DOp _ exe gamma aenv stream arr = do
+  ptx <- gets llvmTarget
+  let
+      err     = $internalError "stencil12DOp" "kernel not found"
+      kmiddle = fromMaybe err (lookupKernel "stencil2DMiddle"    exe)
+      ksides  = fromMaybe err (lookupKernel "stencil2DLeftRight" exe)
+      kends   = fromMaybe err (lookupKernel "stencil2DTopBottom" exe)
+      shapes  = offsets (undefined :: Fun aenv (stencil -> b))
+                        (undefined :: OpenAcc aenv (Array DIM2 a))
+      (borderWidth, borderHeight) = case shapes of
+          (Z :. y :. x):_ -> (-x, -y)
+      (width, height) = case (shape arr) of
+          (Z :. y :. x) -> (x, y)
+  --
+  out <- allocateRemote $ shape arr
+  --
+  liftIO $ do
+    let sidesParams  = (borderWidth, borderHeight, width, height, out)
+    let middleParams = (borderWidth, width - borderWidth, out)
+    --
+    executeOp ptx kmiddle gamma aenv stream (IE borderHeight (height - borderHeight)) middleParams
+    -- Exclude the corners from these sides.
+    executeOp ptx ksides  gamma aenv stream (IE borderHeight (height - borderHeight)) sidesParams
+    -- Include the corners in these sides.
+    executeOp ptx kends   gamma aenv stream (IE 0             width                 ) sidesParams
+    --
+  return out
 
 stencil2Op
     :: (Shape sh, Elt c)
