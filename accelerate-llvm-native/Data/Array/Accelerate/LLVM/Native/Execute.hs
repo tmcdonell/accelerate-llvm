@@ -514,12 +514,12 @@ stencil12DOp _ kernel@NativeR{..} gamma aenv stream arr = do
     --
     execute executableR "stencil2DMiddle" $ \f ->
       executeOp rowsPerRun fillType f gamma aenv (IE borderHeight (height - borderHeight)) middleParams
-    -- Include the corners in these sides.
-    execute executableR "stencil2DLeftRight" $ \f ->
-      executeOp 1 fillS f gamma aenv (IE 0 height) sidesParams
     -- Exclude the corners from these sides.
+    execute executableR "stencil2DLeftRight" $ \f ->
+      executeOp 1 fillS f gamma aenv (IE borderHeight (height - borderHeight)) sidesParams
+    -- Include the corners in these sides.
     execute executableR "stencil2DTopBottom" $ \f ->
-      executeOp 1 fillS f gamma aenv (IE borderWidth (width - borderWidth)) sidesParams
+      executeOp 1 fillS f gamma aenv (IE 0 width) sidesParams
     --
     return out
 
