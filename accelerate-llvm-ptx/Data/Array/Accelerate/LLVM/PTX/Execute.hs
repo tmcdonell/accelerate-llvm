@@ -24,6 +24,7 @@ module Data.Array.Accelerate.LLVM.PTX.Execute (
 ) where
 
 -- accelerate
+import Data.Array.Accelerate.AST
 import Data.Array.Accelerate.Analysis.Match
 import Data.Array.Accelerate.Array.Sugar
 import Data.Array.Accelerate.Error
@@ -93,8 +94,8 @@ instance Execute PTX where
   scanr1        = scan1Op
   scanr'        = scan'Op
   permute       = permuteOp
-  stencil1 _    = stencil1Op
-  stencil2 _    = stencil2Op
+  stencil1      = stencil1Op
+  stencil2      = stencil2Op
 
 
 -- Skeleton implementation
@@ -512,26 +513,28 @@ permuteOp exe gamma aenv stream inplace shIn dfs = do
 -- Using the defaulting instances for stencil operations (for now).
 --
 stencil1Op
-    :: (Shape sh, Elt b)
-    => ExecutableR PTX
+    :: forall aenv stencil sh a b. (Stencil sh a stencil, Shape sh, Elt b)
+    => Proxy (stencil -> b)
+    -> ExecutableR PTX
     -> Gamma aenv
     -> Aval aenv
     -> Stream
     -> Array sh a
     -> LLVM PTX (Array sh b)
-stencil1Op exe gamma aenv stream arr =
+stencil1Op proxy exe gamma aenv stream arr =
   simpleOp exe gamma aenv stream (shape arr)
 
 stencil2Op
     :: (Shape sh, Elt c)
-    => ExecutableR PTX
+    => Proxy (stencil1 -> stencil2 -> c)
+    -> ExecutableR PTX
     -> Gamma aenv
     -> Aval aenv
     -> Stream
     -> Array sh a
     -> Array sh b
     -> LLVM PTX (Array sh c)
-stencil2Op exe gamma aenv stream arr brr =
+stencil2Op _ exe gamma aenv stream arr brr =
   simpleOp exe gamma aenv stream (shape arr `intersect` shape brr)
 
 
