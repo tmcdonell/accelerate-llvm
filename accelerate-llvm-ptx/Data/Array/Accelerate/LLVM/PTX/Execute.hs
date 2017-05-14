@@ -521,8 +521,35 @@ stencil1Op
     -> Stream
     -> Array sh a
     -> LLVM PTX (Array sh b)
-stencil1Op proxy exe gamma aenv stream arr =
-  simpleOp exe gamma aenv stream (shape arr)
+stencil1Op proxy
+  | Just Refl <- matchShapeType (undefined :: DIM2) (undefined :: sh)
+  = stencil12DOp proxy
+  --
+  | otherwise
+  = stencil1AllOp
+
+stencil1AllOp
+    :: forall aenv a b sh. (Shape sh, Elt b)
+    => ExecutableR PTX
+    -> Gamma aenv
+    -> Aval aenv
+    -> Stream
+    -> Array sh a
+    -> LLVM PTX (Array sh b)
+stencil1AllOp kernel gamma aenv stream arr =
+  simpleOp kernel gamma aenv stream (shape arr)
+
+stencil12DOp
+    :: forall aenv a b stencil. (Stencil DIM2 a stencil, Elt b)
+    => Proxy (stencil -> b)
+    -> ExecutableR PTX
+    -> Gamma aenv
+    -> Aval aenv
+    -> Stream
+    -> Array DIM2 a
+    -> LLVM PTX (Array DIM2 b)
+stencil12DOp =
+  undefined
 
 stencil2Op
     :: (Shape sh, Elt c)
