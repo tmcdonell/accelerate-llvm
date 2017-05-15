@@ -156,7 +156,7 @@ parallelChunked s n
     -- device.
     --
     targetLoad :: Float
-    targetLoad = 0.85 * fromIntegral numCapabilities
+    targetLoad = 0.80 * fromIntegral numCapabilities
 
     -- Approximate ordering. Relative differences less than the epsilon are
     -- consider equal.
