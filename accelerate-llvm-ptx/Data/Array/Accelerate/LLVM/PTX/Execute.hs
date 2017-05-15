@@ -566,8 +566,8 @@ stencil12DOp _ exe gamma aenv stream arr = do
   out <- allocateRemote $ shape arr
   --
   liftIO $ do
-    let sidesParams  = (borderWidth, borderHeight, width, height, out)
-    let middleParams = (borderWidth, width - borderWidth, out)
+    let sidesParams  = (i32 borderWidth, i32 borderHeight, i32 width, i32 height, out)
+    let middleParams = (i32 borderWidth, i32 $ width - borderWidth, out)
     --
     executeOp ptx kmiddle gamma aenv stream (IE borderHeight (height - borderHeight)) middleParams
     -- Exclude the corners from these sides.
