@@ -121,6 +121,7 @@ Library
         , llvm-hs-pure                  >= 3.9
         , mtl                           >= 2.0
         , mwc-random                    >= 0.13
+        , time                          >= 1.4
         , unordered-containers          >= 0.2
         , vector                        >= 0.10
 
