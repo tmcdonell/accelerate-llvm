@@ -43,10 +43,12 @@ import Data.Array.Accelerate.LLVM.Foreign
 import Data.Array.Accelerate.LLVM.State
 
 -- standard library
+import Control.Applicative                                      hiding ( Const )
+import Control.Monad.State
+import Data.IORef
 import Data.IntMap                                              ( IntMap )
 import Data.Monoid                                              hiding ( Last )
 import Data.Traversable                                         ( mapM, sequenceA )
-import Control.Applicative                                      hiding ( Const )
 import Prelude                                                  hiding ( exp, unzip, sequence, mapM )
 
 
@@ -65,19 +67,28 @@ class Foreign arch => Compile arch where
 -- each node directly.
 --
 data ExecOpenAcc arch aenv a where
-  ExecAcc  :: ExecutableR arch
-           -> Gamma aenv
-           -> PreOpenAcc (ExecOpenAcc arch) aenv a
-           -> ExecOpenAcc arch aenv a
+  ExecAcc     :: ExecutableR arch
+              -> Gamma aenv
+              -> PreOpenAcc (ExecOpenAcc arch) aenv a
+              -> ExecOpenAcc arch aenv a
 
-  EmbedAcc :: (Shape sh, Elt e)
-           => PreExp (ExecOpenAcc arch) aenv sh
-           -> ExecOpenAcc arch aenv (Array sh e)
+  EmbedAcc    :: (Shape sh, Elt e)
+              => PreExp (ExecOpenAcc arch) aenv sh
+              -> ExecOpenAcc arch aenv (Array sh e)
 
-  UnzipAcc :: (Elt t, Elt e)
-           => TupleIdx (TupleRepr t) e
-           -> Idx aenv (Array sh t)
-           -> ExecOpenAcc arch aenv (Array sh e)
+  UnzipAcc    :: (Elt t, Elt e)
+              => TupleIdx (TupleRepr t) e
+              -> Idx aenv (Array sh t)
+              -> ExecOpenAcc arch aenv (Array sh e)
+
+  CollectAcc  :: Elt index
+              => IORef (Maybe Int)                            -- previously determined # elements per iteration
+              -> SeqIndex index
+              -> ExecExp arch aenv Int                        -- min # elements per iteration
+              -> Maybe (ExecExp arch aenv Int)                -- max # elements per iteration (optional)
+              -> Maybe (ExecExp arch aenv Int)                -- max # iterations (optional)
+              -> PreOpenSeq index (ExecOpenAcc arch) aenv a
+              -> ExecOpenAcc arch aenv a
 
 
 -- An annotated AST suitable for execution
@@ -165,12 +176,12 @@ compileOpenAcc = traverseAcc
         Aforeign ff afun a      -> foreignA ff afun a
 
         -- Array injection
-        Unit e                  -> node =<< liftA  Unit         <$> travE e
         Use arrs                -> useRemote (toArr arrs::arrs) >> node (pure (Use arrs))
+        Unit e                  -> node =<< liftA  Unit                 <$> travE e
         Subarray i s arr        -> node =<< liftA3 Subarray             <$> travE i <*> travE s <*> pure (pure arr)
 
         -- Sequences
-        Collect si l u i s      -> node =<< liftA4 (Collect si)         <$> travE l <*> fmap sequenceA (mapM travE u) <*> fmap sequenceA (mapM travE i) <*> fmap pure (compileOpenSeq s)
+        Collect si l u i s      -> collect si l u i s
 
         -- Index space transforms
         Reshape s a             -> node =<< liftA2 Reshape              <$> travE s <*> travA a
@@ -264,6 +275,22 @@ compileOpenAcc = traverseAcc
           = Just (UnzipAcc tix ix)
         unzip _ _
           = Nothing
+
+        -- Sequence computations
+        collect :: Elt index
+                => SeqIndex index
+                -> DelayedExp aenv Int
+                -> Maybe (DelayedExp aenv Int)
+                -> Maybe (DelayedExp aenv Int)
+                -> PreOpenSeq index DelayedOpenAcc aenv arrs
+                -> LLVM arch (ExecOpenAcc arch aenv arrs)
+        collect si l u i s = do
+          lref   <- liftIO $ newIORef Nothing
+          (_,l') <- travE l
+          (_,u') <- fmap sequenceA (mapM travE u)
+          (_,i') <- fmap sequenceA (mapM travE i)
+          s'     <- compileOpenSeq s
+          return $! CollectAcc lref si l' u' i' s'
 
         -- Is there a foreign version available for this backend? If so, we
         -- leave that node in the AST and strip out the remaining terms.

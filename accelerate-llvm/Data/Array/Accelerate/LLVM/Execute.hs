@@ -54,7 +54,8 @@ import Data.Array.Accelerate.LLVM.Execute.Schedule
 import Control.Applicative                                      hiding ( Const )
 import Control.Monad                                            ( join )
 import Control.Monad.Trans                                      ( liftIO )
-import Data.Maybe                                               ( fromJust )
+import Data.IORef
+import Data.Maybe                                               ( fromJust, fromMaybe )
 import Data.Traversable                                         ( mapM )
 import Prelude                                                  hiding ( exp, map, unzip, scanl, scanr, scanl1, scanr1, mapM, seq )
 
@@ -296,12 +297,6 @@ executeOpenAcc (ExecAcc kernel gamma pacc) aenv stream =
     Acond p t e                 -> acond t e =<< travE p
     Awhile p f a                -> awhile p f =<< travA a
 
-    -- Sequence computation
-    Collect si l u v s          -> do l' <- travE l           -- min # elements per iteration
-                                      u' <- mapM travE u      -- max # elements per iteration (optional)
-                                      v' <- mapM travE v      -- max # iterations (optional)
-                                      executeOpenSeq si l' u' v' s aenv stream
-
     -- Foreign function
     Aforeign asm _ a            -> foreignA asm =<< travA a
 
@@ -332,6 +327,9 @@ executeOpenAcc (ExecAcc kernel gamma pacc) aenv stream =
     Slice{}                     -> fusionError
     ZipWith{}                   -> fusionError
 
+    -- Sequence computation
+    Collect{}                   -> $internalError "execute" "sequence computation was not compiled"
+
   where
     fusionError :: error
     fusionError = $internalError "execute" $ "unexpected fusible material: " ++ showPreAccOp pacc
@@ -351,6 +349,7 @@ executeOpenAcc (ExecAcc kernel gamma pacc) aenv stream =
     -- get the extent of an embedded array
     extent :: Shape sh => ExecOpenAcc arch aenv (Array sh e) -> LLVM arch sh
     extent ExecAcc{}       = $internalError "executeOpenAcc" "expected delayed array"
+    extent CollectAcc{}    = $internalError "executeOpenAcc" "expected delayed array"
     extent (EmbedAcc sh)   = travE sh
     extent (UnzipAcc _ ix) = let AsyncR _ _ a = aprj ix aenv
                              in  return $ shape a
@@ -409,6 +408,18 @@ executeOpenAcc (UnzipAcc tup v) aenv stream = do
         go ZeroTupIdx      (PairTuple _ t) (AD_Pair _ x)
           | Just Refl <- matchTupleType t (eltType (undefined::e)) = x
         go _ _ _                                                   = $internalError "unzip" "inconsistent valuation"
+
+executeOpenAcc (CollectAcc lref si l u i s) aenv stream = do
+  l'    <- fromMaybe <$> travE l                    -- min # elements per iteration
+                     <*> liftIO (readIORef lref)    -- previously determined # elements per iteration
+  u'    <- mapM travE u                             -- max # elements per iteration (optional) (currently ignored)
+  i'    <- mapM travE i                             -- max # iterations (optional)
+  (r,m) <- executeOpenSeq si l' u' i' s aenv stream
+  liftIO $ writeIORef lref (Just m)                 -- record newly determined chunk size
+  return r
+  where
+    travE :: ExecExp arch aenv t -> LLVM arch t
+    travE exp = executeExp exp aenv stream
 
 
 -- Scalar expression evaluation
@@ -528,10 +539,10 @@ executeSeq
 executeSeq (StreamSeq binds s) = do
   aenv  <- executeExtend binds Aempty
   (v,_) <- get =<< async False (executeOpenSeq SeqIndexRpair 1 Nothing Nothing s aenv)
-  return v
+  return (fst v)
 
-{-# SPECIALISE executeOpenSeq :: Execute arch => SeqIndex Int       -> Int -> Maybe Int -> Maybe Int -> PreOpenSeq Int       (ExecOpenAcc arch) aenv arrs -> AvalR arch aenv -> StreamR arch -> LLVM arch arrs #-}
-{-# SPECIALISE executeOpenSeq :: Execute arch => SeqIndex (Int,Int) -> Int -> Maybe Int -> Maybe Int -> PreOpenSeq (Int,Int) (ExecOpenAcc arch) aenv arrs -> AvalR arch aenv -> StreamR arch -> LLVM arch arrs #-}
+{-# SPECIALISE executeOpenSeq :: Execute arch => SeqIndex Int       -> Int -> Maybe Int -> Maybe Int -> PreOpenSeq Int       (ExecOpenAcc arch) aenv arrs -> AvalR arch aenv -> StreamR arch -> LLVM arch (arrs, Int) #-}
+{-# SPECIALISE executeOpenSeq :: Execute arch => SeqIndex (Int,Int) -> Int -> Maybe Int -> Maybe Int -> PreOpenSeq (Int,Int) (ExecOpenAcc arch) aenv arrs -> AvalR arch aenv -> StreamR arch -> LLVM arch (arrs, Int) #-}
 executeOpenSeq
     :: forall arch index aenv arrs. (Execute arch, Elt index)
     => SeqIndex index
@@ -541,14 +552,14 @@ executeOpenSeq
     -> PreOpenSeq index (ExecOpenAcc arch) aenv arrs
     -> AvalR arch aenv
     -> StreamR arch
-    -> LLVM arch arrs
+    -> LLVM arch (arrs, Int)
 executeOpenSeq si i0 _ iters topSeq aenv stream = executeSeq' BaseEnv topSeq
   where
     executeSeq'
         :: forall aenv'.
            Extend (Producer index (ExecOpenAcc arch)) aenv aenv'
         -> PreOpenSeq index (ExecOpenAcc arch) aenv' arrs
-        -> LLVM arch arrs
+        -> LLVM arch (arrs, Int)
     executeSeq' prods seq = do
       schedule          <- liftIO $ initialSchedule i0
       (ext, Just aenv') <- evalSources (sched_size schedule) prods
@@ -560,19 +571,21 @@ executeOpenSeq si i0 _ iters topSeq aenv stream = executeSeq' BaseEnv topSeq
           -> do
                 mlimit' <- maybe (return Nothing) (\limit -> Just <$> executeExp limit aenv' stream) mlimit
                 seed    <- async False (executeOpenAcc b aenv')
-                marrs   <- loop schedule iters mlimit' f r seed ext aenv'
-                case marrs of
-                  Nothing   -> executeOpenAcc def (aenv' `Apush` $internalError "executeOpenSeq" "unexpected") stream
-                  Just arrs -> return (last arrs)
+                mr      <- loop schedule iters mlimit' f r seed ext aenv'
+                case mr of
+                  Just (arrs, ii) -> return (last arrs, ii)
+                  Nothing         -> do
+                    arrs <- executeOpenAcc def (aenv' `Apush` $internalError "executeOpenSeq" "unexpected") stream
+                    return (arrs, sched_size schedule)
 
         Producer (ProduceAccum mlimit f b) (Reify lifted r)
           -> do
                 mlimit' <- maybe (return Nothing) (\limit -> Just <$> executeExp limit aenv' stream) mlimit
                 seed    <- async False (executeOpenAcc b aenv')
-                marrs   <- loop schedule iters mlimit' f r seed ext aenv'
-                case marrs of
-                  Nothing   -> $internalError "executeOpenSeq" "producers are empty"
-                  Just arrs -> return (concatMap (divide lifted) arrs)
+                mr      <- loop schedule iters mlimit' f r seed ext aenv'
+                case mr of
+                  Nothing         -> $internalError "executeOpenSeq" "producers are empty"
+                  Just (arrs, ii) -> return (concatMap (divide lifted) arrs, ii)
 
         _ -> $internalError "executeOpenSeq" "unexpected sequence computation"
 
@@ -586,7 +599,7 @@ executeOpenSeq si i0 _ iters topSeq aenv stream = executeSeq' BaseEnv topSeq
              -> AsyncR arch b                                           -- initial seed
              -> Extend (Producer index (ExecOpenAcc arch)) aenv aenv'
              -> AvalR arch aenv'
-             -> LLVM arch (Maybe [arrs'])
+             -> LLVM arch (Maybe ([arrs'], Int))
         loop sched miters mlimit step extract b ext aenv'
           | done sched miters mlimit  = return Nothing
           | otherwise                 = do
@@ -595,7 +608,7 @@ executeOpenSeq si i0 _ iters topSeq aenv stream = executeSeq' BaseEnv topSeq
               index'                <- useRemoteAsync (fromFunction Z (const (sched_index sched))) stream
               AsyncR t1 t2 (a', b') <- async True  (executeOpenAfun2 step aenv' index' b)
               r                     <- executeOpenAcc extract (aenv' `Apush` AsyncR Nothing t2 a') stream
-              rs                    <- {- unsafeInterleave -} do
+              (rs, ii)              <- {- unsafeInterleave -} do
                 -- TLM: Does 'streamOut' require this block to be executed
                 -- lazily? If so I think that should be explicit in the AST.
                 block t2
@@ -608,10 +621,10 @@ executeOpenSeq si i0 _ iters topSeq aenv stream = executeSeq' BaseEnv topSeq
                                      Nothing      -> return Nothing
                                      Just aenv''  -> loop sched' miters' mlimit step extract (AsyncR t1 t2 b') ext' aenv''
                 case mr2 of
-                  Nothing -> return []
-                  Just r2 -> return r2
+                  Nothing      -> return ([], sched_size sched)
+                  Just (r2,i2) -> return (r2, i2)
               --
-              return $ Just (r : rs)
+              return $ Just (r : rs, ii)
 
         done :: Schedule index -> Maybe Int -> Maybe Int -> Bool
         done _            _      Nothing      = False
