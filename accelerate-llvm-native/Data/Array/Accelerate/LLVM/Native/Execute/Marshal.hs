@@ -60,7 +60,7 @@ instance {-# OVERLAPS #-} M.Marshalable Native (Gamma aenv, Aval aenv) where
     = fmap DL.concat
     $ mapM (\(_, Idx' idx) -> M.marshal' t s (sync (aprj idx aenv))) (IM.elems gamma)
     where
-      sync (AsyncR () a) = a
+      sync (AsyncR _ _ a) = a
 
 instance ArrayElt e => M.Marshalable Native (ArrayData e) where
   marshal' _ _ adata = return $ marshalR arrayElt adata

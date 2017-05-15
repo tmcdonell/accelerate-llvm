@@ -27,7 +27,6 @@ import qualified Data.Array.Accelerate.LLVM.Execute.Async           as A
 import Data.Array.Accelerate.LLVM.Native.Target
 
 import Control.Monad.Trans
-import Data.Time.Clock
 import System.CPUTime
 
 
@@ -54,7 +53,7 @@ instance A.Async Native where
   --
   {-# INLINEABLE checkpoint #-}
   checkpoint False () = return Nothing
-  checkpoint True  () = Just <$> getCPUTime
+  checkpoint True  () = Just <$> liftIO getCPUTime
 
   {-# INLINE after #-}
   after () _ = return ()

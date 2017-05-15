@@ -86,7 +86,7 @@ instance {-# OVERLAPS #-} M.Marshalable PTX (Gamma aenv, Aval aenv) where
       -- implementation directly.
       --
       sync :: Async a -> IO a
-      sync (AsyncR event arr) = after event stream >> return arr
+      sync (AsyncR _ event arr) = after event stream >> return arr
 
 instance ArrayElt e => M.Marshalable PTX (ArrayData e) where
   marshal' ptx _ adata = do

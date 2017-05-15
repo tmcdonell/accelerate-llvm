@@ -128,7 +128,7 @@ copyToHostLazy arrs = do
             evalPTX ptx $ do
               s <- fork
               copyToHostR 0 n (Just s) ad
-              e <- checkpoint s
+              e <- checkpoint False s
               block e
               join s
               return fp
