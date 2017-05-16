@@ -65,5 +65,5 @@ instance A.Async PTX where
   {-# INLINEABLE elapsed #-}
   elapsed start end = do
     ms <- liftIO $! Event.elapsedTime start end
-    return (ms * 1000)
+    return (ms * 1E-3)
 
