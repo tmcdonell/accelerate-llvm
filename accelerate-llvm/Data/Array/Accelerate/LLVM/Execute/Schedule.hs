@@ -82,11 +82,7 @@ parallelChunked s n
           time_avg    = ema alpha elapsed old_time_avg old_time_inst time
           --
           change      = decision old_decision old_load_avg old_time_avg load_avg time_avg
-          new_size
-            = (if change /= old_decision
-                then trace ("new decision: " ++ show change)
-                else id)
-            $ apply change old_size
+          new_size    = apply change old_size
           new_start   = old_start + old_size
       --
       return $ Schedule
