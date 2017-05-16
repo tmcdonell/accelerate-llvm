@@ -553,9 +553,9 @@ stencil12DOp _ exe gamma aenv stream arr = do
   ptx <- gets llvmTarget
   let
       err     = $internalError "stencil12DOp" "kernel not found"
-      kmiddle = fromMaybe err (lookupKernel "stencil2DMiddle"    exe)
-      ksides  = fromMaybe err (lookupKernel "stencil2DLeftRight" exe)
-      kends   = fromMaybe err (lookupKernel "stencil2DTopBottom" exe)
+      kmiddle = fromMaybe err (lookupKernel "stencil2DMiddle" exe)
+      kedge   = fromMaybe err (lookupKernel "stencil2DEdge"   exe)
+      kend    = fromMaybe err (lookupKernel "stencil2DEnd"    exe)
       shapes  = offsets (undefined :: Fun aenv (stencil -> b))
                         (undefined :: OpenAcc aenv (Array DIM2 a))
       (borderWidth, borderHeight) = case shapes of
@@ -566,14 +566,19 @@ stencil12DOp _ exe gamma aenv stream arr = do
   out <- allocateRemote $ shape arr
   --
   liftIO $ do
-    let sidesParams  = (i32 borderWidth, i32 borderHeight, i32 width, i32 height, out)
-    let middleParams = (i32 borderWidth, i32 $ width - borderWidth, out)
+    let leftParams   = (i32   0                    , i32   borderWidth        , out)
+        rightParams  = (i32 $ width  - borderWidth , i32   width              , out)
+        topParams    = (i32   0                    , i32   borderHeight       , out)
+        bottomParams = (i32 $ height - borderHeight, i32   height             , out)
+        middleParams = (i32   borderWidth          , i32 $ width - borderWidth, out)
     --
     executeOp ptx kmiddle gamma aenv stream (IE borderHeight (height - borderHeight)) middleParams
     -- Exclude the corners from these sides.
-    executeOp ptx ksides  gamma aenv stream (IE borderHeight (height - borderHeight)) sidesParams
+    executeOp ptx kedge   gamma aenv stream (IE borderHeight (height - borderHeight)) leftParams
+    executeOp ptx kedge   gamma aenv stream (IE borderHeight (height - borderHeight)) rightParams
     -- Include the corners in these sides.
-    executeOp ptx kends   gamma aenv stream (IE 0             width                 ) sidesParams
+    executeOp ptx kend    gamma aenv stream (IE 0             width                 ) topParams
+    executeOp ptx kend    gamma aenv stream (IE 0             width                 ) bottomParams
     --
   return out
 

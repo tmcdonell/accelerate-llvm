@@ -43,6 +43,7 @@ import Data.Array.Accelerate.LLVM.PTX.CodeGen.Loop
 
 import Data.Array.Accelerate.LLVM.CodeGen.Skeleton
 
+import LLVM.AST.Type.Name
 import qualified LLVM.AST.Global                                    as LLVM
 
 
@@ -124,31 +125,15 @@ stencilElement
     -> IRFun1 PTX aenv (stencil -> b)
     -> IRManifest PTX aenv (Array DIM2 a)
     -> IRArray (Array DIM2 b)
-    -> IR Int32
-    -> IR Int32
+    -> IR Int
+    -> IR Int
     -> CodeGen ()
 stencilElement mBoundary aenv f (IRManifest v) arrOut x y = do
-  x'    <- A.fromIntegral integralType numType x
-  y'    <- A.fromIntegral integralType numType y
-  let ix = index2D x' y'
+  let ix = index2D x y
   i     <- intOfIndex (irArrayShape arrOut) ix
   sten  <- stencilAccess mBoundary (irArray (aprj v aenv)) ix
   r     <- app1 f sten
   writeArray arrOut i r
-
-
-middleElement, boundaryElement
-    :: forall aenv stencil a b. (Stencil DIM2 a stencil, Elt b, Skeleton PTX)
-    => Boundary (IR a)
-    -> Gamma aenv
-    -> IRFun1 PTX aenv (stencil -> b)
-    -> IRManifest PTX aenv (Array DIM2 a)
-    -> IRArray (Array DIM2 b)
-    -> IR Int32
-    -> IR Int32
-    -> CodeGen ()
-middleElement   _        = stencilElement  Nothing
-boundaryElement boundary = stencilElement (Just boundary)
 
 
 mkStencil2D
@@ -159,81 +144,47 @@ mkStencil2D
     -> Boundary (IR a)
     -> IRManifest PTX aenv (Array DIM2 a)
     -> CodeGen (IROpenAcc PTX aenv (Array DIM2 b))
-mkStencil2D n aenv f boundary ir =
-  foldr1 (+++) <$> sequence [ mkStencil2DLeftRight n aenv f boundary ir
-                            , mkStencil2DTopBottom n aenv f boundary ir
-                            , mkStencil2DMiddle    n aenv f boundary ir
-                            ]
-
-mkStencil2DMiddle
-    :: forall aenv stencil a b. (Stencil DIM2 a stencil, Elt b, Skeleton PTX)
-    => PTX
-    -> Gamma aenv
-    -> IRFun1 PTX aenv (stencil -> b)
-    -> Boundary (IR a)
-    -> IRManifest PTX aenv (Array DIM2 a)
-    -> CodeGen (IROpenAcc PTX aenv (Array DIM2 b))
-mkStencil2DMiddle ptx aenv f boundary ir@(IRManifest v) =
+mkStencil2D ptx aenv f boundary ir =
   let
       (y0,y1,x0,x1, paramGang) = gangParam2D
+  in foldr1 (+++) <$> sequence
+       [ runRegion "stencil2DMiddle" (y0, x0) (y1, x1) paramGang ptx aenv f  Nothing        ir
+       , runRegion "stencil2DEdge"   (y0, x0) (y1, x1) paramGang ptx aenv f (Just boundary) ir
+       , runRegion "stencil2DEnd"    (x0, y0) (x1, y1) paramGang ptx aenv f (Just boundary) ir
+       ]
+
+
+runRegion
+    :: forall aenv stencil a b. (Stencil DIM2 a stencil, Elt b, Skeleton PTX)
+    => Label
+    -> (IR Int32, IR Int32)
+    -> (IR Int32, IR Int32)
+    -> [LLVM.Parameter]
+    -> PTX
+    -> Gamma aenv
+    -> IRFun1 PTX aenv (stencil -> b)
+    -> Maybe (Boundary (IR a))
+    -> IRManifest PTX aenv (Array DIM2 a)
+    -> CodeGen (IROpenAcc PTX aenv (Array DIM2 b))
+runRegion label (y0, x0) (y1, x1) paramGang ptx aenv f mBoundary ir =
+  let
       (arrOut, paramOut)       = mutableArray ("out" :: Name (Array DIM2 b))
       paramEnv                 = envParam aenv
-  in
-  makeOpenAcc ptx "stencil2DMiddle" (paramGang ++ paramOut ++ paramEnv) $ do
-    imapFromTo y0 y1 $ \y ->
-      imapFromTo x0 x1 $ \x ->
-        middleElement boundary aenv f ir arrOut x y
+  in makeOpenAcc ptx label (paramGang ++ paramOut ++ paramEnv) $ do
+    localWidth  <- sub numType x1 x0
+    localHeight <- sub numType y1 y0
+    endi        <- mul numType localWidth localHeight
 
-    return_
+    x0' <- A.fromIntegral integralType numType x0
+    y0' <- A.fromIntegral integralType numType y0
 
-
-mkStencil2DLeftRight
-    :: forall aenv stencil a b. (Stencil DIM2 a stencil, Elt b, Skeleton PTX)
-    => PTX
-    -> Gamma aenv
-    -> IRFun1 PTX aenv (stencil -> b)
-    -> Boundary (IR a)
-    -> IRManifest PTX aenv (Array DIM2 a)
-    -> CodeGen (IROpenAcc PTX aenv (Array DIM2 b))
-mkStencil2DLeftRight ptx aenv f boundary ir@(IRManifest v) =
-  let
-      (start, end, maxBorderOffsetWidth, _, width, _, paramGang) = gangParam2DSides
-      (arrOut, paramOut) = mutableArray ("out" :: Name (Array DIM2 b))
-      paramEnv           = envParam aenv
-  in
-  makeOpenAcc ptx "stencil2DLeftRight" (paramGang ++ paramOut ++ paramEnv) $ do
-    imapFromTo (int32 0) maxBorderOffsetWidth $ \x -> do
-      rightx <- sub numType width =<< add numType (int32 1) x
-      imapFromTo start end $ \y -> do
-        -- Left
-        boundaryElement boundary aenv f ir arrOut x y
-        -- Right
-        boundaryElement boundary aenv f ir arrOut rightx y
-
-    return_
-
-
-mkStencil2DTopBottom
-    :: forall aenv stencil a b. (Stencil DIM2 a stencil, Elt b, Skeleton PTX)
-    => PTX
-    -> Gamma aenv
-    -> IRFun1 PTX aenv (stencil -> b)
-    -> Boundary (IR a)
-    -> IRManifest PTX aenv (Array DIM2 a)
-    -> CodeGen (IROpenAcc PTX aenv (Array DIM2 b))
-mkStencil2DTopBottom ptx aenv f boundary ir@(IRManifest v) =
-  let
-      (start, end, _, maxBorderOffsetHeight, _, height, paramGang) = gangParam2DSides
-      (arrOut, paramOut) = mutableArray ("out" :: Name (Array DIM2 b))
-      paramEnv           = envParam aenv
-  in
-  makeOpenAcc ptx "stencil2DTopBottom" (paramGang ++ paramOut ++ paramEnv) $ do
-    imapFromTo (int32 0) maxBorderOffsetHeight $ \y -> do
-      bottomy <- sub numType height =<< add numType (int32 1) y
-      imapFromTo start end $ \x -> do
-        -- Top
-        boundaryElement boundary aenv f ir arrOut x y
-        -- Bottom
-        boundaryElement boundary aenv f ir arrOut x bottomy
+    imapFromTo (int32 0) (endi) $ \i -> do
+      localWidth' <- A.fromIntegral integralType numType localWidth
+      localHeight' <- A.fromIntegral integralType numType localHeight
+      i'       <- A.fromIntegral integralType numType i -- loop counter is Int32
+      IR (OP_Pair (OP_Pair OP_Unit y) x) <- indexOfInt (index2D localWidth' localHeight') i'
+      x'       <- add numType (IR x) x0'
+      y'       <- add numType (IR y) y0'
+      stencilElement mBoundary aenv f ir arrOut x' y'
 
     return_
