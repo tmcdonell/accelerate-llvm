@@ -135,12 +135,12 @@ parallelChunked s n
           resolve GT = Decrease
           resolve LT = Increase
       in
-      if load < targetLoad || cmp old_load load == LT
+      if load < targetLoad || cmp load old_load == LT
         then Increase
         else case prev of
-               Increase -> resolve (cmp (old_time * 2) time)
+               Increase -> resolve (cmp (old_time * 3) time)
                Maintain -> resolve (cmp old_time       time)
-               Decrease -> resolve (cmp old_time       (time * 1.5))
+               Decrease -> resolve (cmp old_time       (time * 1.75))
                Unknown  -> Increase -- we should never get here
 
     apply :: Change -> Int -> Int
@@ -156,10 +156,10 @@ parallelChunked s n
     -- device.
     --
     targetLoad :: Float
-    targetLoad = 0.80 * fromIntegral numCapabilities
+    targetLoad = 0.75 * fromIntegral numCapabilities
 
     -- Approximate ordering. Relative differences less than the epsilon are
-    -- consider equal.
+    -- considered equal.
     --
     cmp :: Float -> Float -> Ordering
     cmp u v
