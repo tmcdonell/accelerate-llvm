@@ -44,7 +44,7 @@ import Data.Array.Accelerate.LLVM.State
 
 -- standard library
 import Control.Applicative                                      hiding ( Const )
-import Control.Monad.State
+import Control.Monad.State                                      ( liftIO )
 import Data.IORef
 import Data.IntMap                                              ( IntMap )
 import Data.Monoid                                              hiding ( Last )

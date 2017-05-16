@@ -15,6 +15,8 @@ module Data.Array.Accelerate.LLVM.Execute.Async
   where
 
 import Data.Array.Accelerate.LLVM.State
+import Control.Applicative
+import Prelude
 
 
 -- Asynchronous operations
