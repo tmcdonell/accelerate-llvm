@@ -24,6 +24,7 @@ import Data.Array.Accelerate.Error
 import Data.Array.Accelerate.LLVM.Execute.Async                     hiding ( Async )
 import qualified Data.Array.Accelerate.LLVM.Execute.Async           as A
 
+import Data.Array.Accelerate.LLVM.Native.State
 import Data.Array.Accelerate.LLVM.Native.Target
 
 import Control.Monad.Trans
@@ -68,4 +69,7 @@ instance A.Async Native where
   {-# INLINEABLE elapsed #-}
   elapsed (Just cpu0) (Just cpu1) = return $ fromIntegral (cpu1 - cpu0) * 1E-12
   elapsed _           _           = $internalError "elapsed" "timing not enabled for selected events"
+
+  {-# INLINEABLE unsafeInterleave #-}
+  unsafeInterleave = unsafeInterleaveNative
 

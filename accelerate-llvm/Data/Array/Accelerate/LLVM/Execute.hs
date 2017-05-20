@@ -608,7 +608,7 @@ executeOpenSeq si i0 _ iters topSeq aenv stream = executeSeq' BaseEnv topSeq
               index'                <- useRemoteAsync (fromFunction Z (const (sched_index sched))) stream
               AsyncR t1 t2 (a', b') <- async True  (executeOpenAfun2 step aenv' index' b)
               r                     <- executeOpenAcc extract (aenv' `Apush` AsyncR Nothing t2 a') stream
-              (rs, ii)              <- {- unsafeInterleave -} do
+              (rs, ii)              <- unsafeInterleave $ do
                 -- TLM: Does 'streamOut' require this block to be executed
                 -- lazily? If so I think that should be explicit in the AST.
                 block t2

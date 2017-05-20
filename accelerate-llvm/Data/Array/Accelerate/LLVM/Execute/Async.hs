@@ -78,6 +78,11 @@ class Async arch where
   --
   elapsed     :: EventR arch -> EventR arch -> LLVM arch Float
 
+  -- | Interleave a computation in order to do lazy IO. This is terrible
+  -- and I feel bad for adding it.
+  --
+  unsafeInterleave :: LLVM arch a -> LLVM arch a
+
 
 -- | Wait for an asynchronous operation to complete, then return it. If timing
 -- was enabled for the operation, the elapsed time is returned as well.
