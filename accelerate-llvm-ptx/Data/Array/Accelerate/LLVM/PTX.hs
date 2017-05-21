@@ -208,7 +208,7 @@ streamOutWith target s =
   let
     s'  = convertSeqWith config s
     s'' = unsafePerformIO $ phase "compile" (evalPTX target (compileSeq s')) >>= dumpStats
-  in unsafePerformIO $ phase "execute" (evalPTX target (executeSeq s''))
+  in unsafePerformIO $ phase "execute" (evalPTX target (executeSeq s'' >>= mapM AD.copyToHostLazy))
 
 
 -- How the Accelerate program should be evaluated.

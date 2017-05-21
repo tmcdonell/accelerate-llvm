@@ -27,7 +27,7 @@ module Data.Array.Accelerate.LLVM.Execute (
 -- accelerate
 import Data.Array.Accelerate.AST
 import Data.Array.Accelerate.Analysis.Match
-import Data.Array.Accelerate.Array.Lifted                       ( divide )
+import Data.Array.Accelerate.Array.Lifted                       ( LiftedType(..), LiftedTupleType(..) )
 import Data.Array.Accelerate.Array.Representation               ( SliceIndex(..) )
 import Data.Array.Accelerate.Array.Sugar                        hiding ( Foreign )
 import Data.Array.Accelerate.Error
@@ -35,6 +35,7 @@ import Data.Array.Accelerate.Product
 import Data.Array.Accelerate.Trafo
 import Data.Array.Accelerate.Type
 import Data.Array.Accelerate.Interpreter                        ( evalPrim, evalPrimConst, evalPrj )
+import qualified Data.Array.Accelerate.Array.Lifted             as L
 import qualified Data.Array.Accelerate.Array.Sugar              as S
 import qualified Data.Array.Accelerate.Array.Representation     as R
 import qualified Data.Array.Accelerate.Debug                    as Debug
@@ -58,6 +59,7 @@ import Data.IORef
 import Data.Maybe                                               ( fromJust, fromMaybe )
 import Data.Traversable                                         ( mapM )
 import Prelude                                                  hiding ( exp, map, unzip, scanl, scanr, scanl1, scanr1, mapM, seq )
+import qualified Prelude                                        as P
 
 
 class (Remote arch, Foreign arch) => Execute arch where
@@ -585,8 +587,9 @@ executeOpenSeq si i0 _ iters topSeq aenv stream = executeSeq' BaseEnv topSeq
                 mr      <- loop schedule iters mlimit' f r seed ext aenv'
                 case mr of
                   Nothing         -> $internalError "executeOpenSeq" "producers are empty"
-                  Just (arrs, ii) -> return (concatMap (divide lifted) arrs, ii)
-
+                  Just (arrs, ii) -> do
+                    arrs' <- concat <$> mapM (\a -> divide lifted a) arrs
+                    return (arrs', ii)
         _ -> $internalError "executeOpenSeq" "unexpected sequence computation"
 
       where
@@ -671,3 +674,57 @@ executeExtend (PushEnv env a) aenv = do
   a'    <- async False (executeOpenAcc a aenv')
   return (Apush aenv' a')
 
+-- Divide a chunk of a sequence into a list of arrays.
+--
+divide :: Remote arch => LiftedType a a' -> a' -> LLVM arch [a]
+divide UnitT       _ = return [()]
+divide LiftedUnitT a = flip replicate () <$> a `indexRemote` 0
+divide AvoidedT    a = return [a]
+divide RegularT    a = divideRegular a
+divide IrregularT  a = divideIrregular a
+divide (TupleT t)  a = P.map toAtuple <$> divideT t (fromAtuple a)
+  where
+    divideT :: Remote arch => LiftedTupleType t t' -> t' -> LLVM arch [t]
+    divideT NilLtup          ()    = return (P.repeat ())
+    divideT (SnocLtup lt ty) (t,a) = zip <$> (divideT lt t) <*> (divide ty a)
+
+divideRegular :: forall arch sh e. (Remote arch, Shape sh, Elt e)
+              => Array (sh:.Int) e
+              -> LLVM arch [Array sh e]
+divideRegular src = do
+  -- Asynchronously start all the copying.
+  out <- sequence [copy (i * size sh') | i <- [0..n-1]]
+  -- Block waiting for all arrays to be copied.
+  mapM (fmap fst . get) out
+  where
+    sh  = shapeToList (shape src)
+    n   = last sh
+    --
+    sh' :: sh
+    sh' = listToShape (init sh)
+    --
+    {-# NOINLINE copy #-}
+    copy :: Int -> LLVM arch (AsyncR arch (Array sh e))
+    copy start = do
+      dst <- allocateRemote sh'
+      async False (\s -> runArray2 src dst (duplicateToRemoteR start (start + size sh') (Just s))
+                      >> return dst)
+
+divideIrregular :: forall arch sh e. (Remote arch, Shape sh, Elt e)
+                => (L.Segments sh, Vector e)
+                -> LLVM arch [Array sh e]
+divideIrregular (segs, vs) = do
+  -- Asynchronously start all the copying.
+  out <- sequence [join (copy <$> indexRemote offs i <*> indexRemote shs i) | i <- [0..n-1]]
+  -- Block waiting for all arrays to be copied.
+  mapM (fmap fst . get) out
+  where
+    (_, offs, shs) = segs
+    n              = size (shape shs)
+    --
+    {-# NOINLINE copy #-}
+    copy :: Int -> sh -> LLVM arch (AsyncR arch (Array sh e))
+    copy start sh = do
+      dst <- allocateRemote sh
+      async False (\s -> runArray2 vs dst (duplicateToRemoteR start (start + size sh) (Just s))
+                      >> return dst)

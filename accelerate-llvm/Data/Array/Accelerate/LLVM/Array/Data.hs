@@ -31,6 +31,7 @@ module Data.Array.Accelerate.LLVM.Array.Data (
   runIndexArray,
   runArrays,
   runArray,
+  runArray2,
 
   module Data.Array.Accelerate.Array.Data,
 
