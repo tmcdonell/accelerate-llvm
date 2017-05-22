@@ -91,6 +91,10 @@ index2D :: IR Int -> IR Int -> IR DIM2
 index2D (IR x) (IR y) = IR (OP_Pair (OP_Pair OP_Unit y) x)
 
 
+index2DToPair :: IR DIM2 -> (IR Int, IR Int)
+index2DToPair (IR (OP_Pair (OP_Pair OP_Unit y) x)) = (IR x, IR y)
+
+
 stencilElement
     :: forall aenv stencil a b. (Stencil DIM2 a stencil, Elt b, Skeleton PTX)
     => Maybe (Boundary (IR a))
@@ -152,12 +156,12 @@ runRegion label (y0, x0) (y1, x1) paramGang ptx aenv f mBoundary ir =
     y0' <- A.fromIntegral integralType numType y0
 
     imapFromTo (int32 0) (endi) $ \i -> do
-      localWidth' <- A.fromIntegral integralType numType localWidth
+      localWidth'  <- A.fromIntegral integralType numType localWidth
       localHeight' <- A.fromIntegral integralType numType localHeight
-      i'       <- A.fromIntegral integralType numType i -- loop counter is Int32
-      IR (OP_Pair (OP_Pair OP_Unit y) x) <- indexOfInt (index2D localWidth' localHeight') i'
-      x'       <- add numType (IR x) x0'
-      y'       <- add numType (IR y) y0'
+      i'           <- A.fromIntegral integralType numType i -- loop counter is Int32
+      (x, y)       <- index2DToPair <$> indexOfInt (index2D localWidth' localHeight') i'
+      x'           <- add numType x x0'
+      y'           <- add numType y y0'
       stencilElement mBoundary aenv f ir arrOut x' y'
 
     return_
