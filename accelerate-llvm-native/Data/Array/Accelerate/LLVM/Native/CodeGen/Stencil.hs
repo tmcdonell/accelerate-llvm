@@ -45,6 +45,8 @@ import Data.Array.Accelerate.LLVM.CodeGen.Skeleton
 
 import qualified LLVM.AST.Global                                    as LLVM
 
+import Control.Applicative
+
 
 mkStencil
     :: forall aenv stencil a b sh. (Stencil sh a stencil, Elt b, Skeleton Native)
