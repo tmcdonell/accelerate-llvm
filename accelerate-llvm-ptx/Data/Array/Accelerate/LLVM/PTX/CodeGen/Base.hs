@@ -104,6 +104,13 @@ threadIdx   = specialPTXReg "llvm.nvvm.read.ptx.sreg.tid.x"
 blockIdx    = specialPTXReg "llvm.nvvm.read.ptx.sreg.ctaid.x"
 warpSize    = specialPTXReg "llvm.nvvm.read.ptx.sreg.warpsize"
 
+blockDimy, gridDimy, threadIdy, blockIdy :: CodeGen (IR Int32)
+blockDimy   = specialPTXReg "llvm.nvvm.read.ptx.sreg.ntid.y"
+gridDimy    = specialPTXReg "llvm.nvvm.read.ptx.sreg.nctaid.y"
+threadIdy   = specialPTXReg "llvm.nvvm.read.ptx.sreg.tid.y"
+blockIdy    = specialPTXReg "llvm.nvvm.read.ptx.sreg.ctaid.y"
+
+
 laneId :: CodeGen (IR Int32)
 laneId      = specialPTXReg "llvm.nvvm.read.ptx.sreg.laneid"
 
