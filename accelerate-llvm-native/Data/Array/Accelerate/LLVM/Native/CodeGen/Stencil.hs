@@ -25,7 +25,7 @@ import Data.Array.Accelerate.Type
 import Data.Array.Accelerate.Error
 
 import Data.Array.Accelerate.LLVM.Analysis.Match
-import Data.Array.Accelerate.LLVM.CodeGen.Arithmetic
+import Data.Array.Accelerate.LLVM.CodeGen.Arithmetic                as A
 import Data.Array.Accelerate.LLVM.CodeGen.Array
 import Data.Array.Accelerate.LLVM.CodeGen.Base
 import Data.Array.Accelerate.LLVM.CodeGen.Environment
@@ -177,7 +177,31 @@ mkStencil2DMiddle _ aenv f boundary ir@(IRManifest v) =
       paramEnv                 = envParam aenv
   in
   makeOpenAcc "stencil2DMiddle" (paramGang ++ paramOut ++ paramEnv) $ do
-    imapFromTo y0 y1 $ \y ->
+    yend <- sub numType y1 (int 3)
+    imapFromStepTo y0 (int 4) yend $ \y -> do
+      y_1 <- add numType y (int 1)
+      y_2 <- add numType y (int 2)
+      y_3 <- add numType y (int 3)
+      imapFromTo x0 x1 $ \x -> do
+        let ix = index2D x y
+        i0 <- intOfIndex (irArrayShape arrOut) ix
+        i1 <- intOfIndex (irArrayShape arrOut) (index2D x y_1)
+        i2 <- intOfIndex (irArrayShape arrOut) (index2D x y_2)
+        i3 <- intOfIndex (irArrayShape arrOut) (index2D x y_3)
+        (s0, s1, s2, s3) <- stencilAccesses Nothing (irArray (aprj v aenv)) ix
+        r0 <- app1 f s0
+        r1 <- app1 f s1
+        r2 <- app1 f s2
+        r3 <- app1 f s3
+        writeArray arrOut i0 r0
+        writeArray arrOut i1 r1
+        writeArray arrOut i2 r2
+        writeArray arrOut i3 r3
+    -- Do the last few rows that aren't in the groups of 4.
+    yrange    <- sub numType y1 y0
+    remainder <- A.rem integralType yrange (int 4)
+    starty    <- sub numType y1 remainder
+    imapFromTo starty y1 $ \y ->
       imapFromTo x0 x1 $ \x ->
         middleElement boundary aenv f ir arrOut x y
 
