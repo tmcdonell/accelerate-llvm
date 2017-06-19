@@ -634,6 +634,26 @@ executeOp ptx@PTX{..} kernel@Kernel{..} gamma aenv stream r args =
     launch kernel stream (end-start) 1 argv
 
 
+-- Execute the function implementing this kernel in 2D.
+--
+executeOp2D
+    :: Marshalable args
+    => PTX
+    -> Kernel
+    -> Gamma aenv
+    -> Aval aenv
+    -> Stream
+    -> Range
+    -> Range
+    -> args
+    -> IO ()
+executeOp2D ptx@PTX{..} kernel@Kernel{..} gamma aenv stream r_x r_y args =
+  runExecutable fillP kernelName defaultPPT r_x $ \start_x end_x _ -> do
+    runExecutable fillP kernelName defaultPPT r_y $ \start_y end_y _ -> do
+      argv <- marshal ptx stream (i32 start_x, i32 end_x, i32 start_y, i32 end_y, args, (gamma,aenv))
+      launch kernel stream (end_x-start_x) (end_y-start_y) argv
+
+
 -- Execute a device function with the given thread configuration and function
 -- parameters.
 --
