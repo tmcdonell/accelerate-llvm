@@ -631,14 +631,14 @@ executeOp
 executeOp ptx@PTX{..} kernel@Kernel{..} gamma aenv stream r args =
   runExecutable fillP kernelName defaultPPT r $ \start end _ -> do
     argv <- marshal ptx stream (i32 start, i32 end, args, (gamma,aenv))
-    launch kernel stream (end-start) argv
+    launch kernel stream (end-start) 1 argv
 
 
 -- Execute a device function with the given thread configuration and function
 -- parameters.
 --
-launch :: Kernel -> Stream -> Int -> [CUDA.FunParam] -> IO ()
-launch Kernel{..} stream n args =
+launch :: Kernel -> Stream -> Int -> Int -> [CUDA.FunParam] -> IO ()
+launch Kernel{..} stream n m args =
   when (n > 0) $
   withLifetime stream $ \st ->
     Debug.monitorProcTime query msg (Just st) $
