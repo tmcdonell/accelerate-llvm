@@ -687,7 +687,7 @@ executeOp3D ptx@PTX{..} kernel@Kernel{..} gamma aenv stream r_x r_y r_z args =
         argv <- marshal ptx stream ( i32 start_x, i32 end_x
                                    , i32 start_y, i32 end_y
                                    , i32 start_z, i32 end_z, args, (gamma,aenv))
-        launch2D kernel stream (end_x-start_x) (end_y-start_y) argv
+        launch3D kernel stream (end_x-start_x) (end_y-start_y) (end_z-start_z) argv
 
 
 -- Execute a device function with the given thread configuration and function
