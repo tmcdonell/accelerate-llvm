@@ -97,6 +97,27 @@ index2DToPair :: IR DIM2 -> (IR Int, IR Int)
 index2DToPair (IR (OP_Pair (OP_Pair OP_Unit y) x)) = (IR x, IR y)
 
 
+imapFromTo2d
+  :: IR Int32 -> IR Int32
+  -> IR Int32 -> IR Int32
+  -> (IR Int32 -> IR Int32 -> CodeGen ())
+  -> CodeGen ()
+imapFromTo2d startx endx starty endy body = do
+  --
+  stepx <- gridSize
+  stepy <- gridSizey
+  --
+  tidx  <- globalThreadIdx
+  tidy  <- globalThreadIdy
+  --
+  x0    <- add numType tidx startx
+  y0    <- add numType tidy starty
+  --
+  imapFromStepTo y0 stepy endy $ \y ->
+    imapFromStepTo x0 stepx endx $ \x ->
+      body x y
+
+
 stencilElement
     :: forall aenv stencil a b. (Stencil DIM2 a stencil, Elt b, Skeleton PTX)
     => Maybe (Boundary (IR a))
