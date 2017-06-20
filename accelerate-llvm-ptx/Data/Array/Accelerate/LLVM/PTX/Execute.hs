@@ -570,20 +570,34 @@ stencil12DOp _ exe gamma aenv streamM arr = do
   streamT <- fork
   streamB <- fork
   --
+  -- liftIO $ do
+  --   let leftParams   = (i32   0                    , i32   borderWidth        , out)
+  --       rightParams  = (i32 $ width  - borderWidth , i32   width              , out)
+  --       topParams    = (i32   0                    , i32   borderHeight       , out)
+  --       bottomParams = (i32 $ height - borderHeight, i32   height             , out)
+  --       middleParams = (i32   borderWidth          , i32 $ width - borderWidth, out)
+  --   --
+  --   executeOp ptx kmiddle gamma aenv streamM (IE borderHeight (height - borderHeight)) middleParams
+  --   -- Exclude the corners from these sides.
+  --   executeOp ptx kedge   gamma aenv streamL (IE borderHeight (height - borderHeight)) leftParams
+  --   executeOp ptx kedge   gamma aenv streamR (IE borderHeight (height - borderHeight)) rightParams
+  --   -- Include the corners in these sides.
+  --   executeOp ptx kend    gamma aenv streamT (IE 0             width                 ) topParams
+  --   executeOp ptx kend    gamma aenv streamB (IE 0             width                 ) bottomParams
+  --
   liftIO $ do
-    let leftParams   = (i32   0                    , i32   borderWidth        , out)
-        rightParams  = (i32 $ width  - borderWidth , i32   width              , out)
-        topParams    = (i32   0                    , i32   borderHeight       , out)
-        bottomParams = (i32 $ height - borderHeight, i32   height             , out)
-        middleParams = (i32   borderWidth          , i32 $ width - borderWidth, out)
-    --
-    executeOp ptx kmiddle gamma aenv streamM (IE borderHeight (height - borderHeight)) middleParams
+    executeOp2D ptx kmiddle gamma aenv streamM (IE  borderHeight           (height - borderHeight))
+                                               (IE  borderWidth            (width - borderWidth  )) out
     -- Exclude the corners from these sides.
-    executeOp ptx kedge   gamma aenv streamL (IE borderHeight (height - borderHeight)) leftParams
-    executeOp ptx kedge   gamma aenv streamR (IE borderHeight (height - borderHeight)) rightParams
+    executeOp2D ptx kedge   gamma aenv streamL (IE  borderHeight           (height - borderHeight))
+                                               (IE  0                       borderWidth           ) out
+    executeOp2D ptx kedge   gamma aenv streamR (IE  borderHeight           (height - borderHeight))
+                                               (IE (width  - borderWidth )  width                 ) out
     -- Include the corners in these sides.
-    executeOp ptx kend    gamma aenv streamT (IE 0             width                 ) topParams
-    executeOp ptx kend    gamma aenv streamB (IE 0             width                 ) bottomParams
+    executeOp2D ptx kend    gamma aenv streamT (IE  0                       width                 )
+                                               (IE  0                       borderHeight          ) out
+    executeOp2D ptx kend    gamma aenv streamB (IE  0                       width                 )
+                                               (IE (height - borderHeight)  height                ) out
   --
   close streamL
   close streamR
@@ -708,8 +722,10 @@ launch2D :: Kernel -> Stream -> Int -> Int -> [CUDA.FunParam] -> IO ()
 launch2D kernel@Kernel{..} stream n m =
   when (n > 0) . when (m > 0) .
   launch kernel stream
-    (kernelThreadBlockSize, kernelThreadBlockSize, 1)
-    (kernelThreadBlocks n , kernelThreadBlocks m , 1)
+    (kernelThreadBlockSize, 1, 1)
+    (kernelThreadBlocks n , 1, 1)
+    -- (kernelThreadBlockSize, kernelThreadBlockSize, 1)
+    -- (kernelThreadBlocks n , kernelThreadBlocks m , 1)
 
 
 -- Execute a device function with the given thread configuration and function

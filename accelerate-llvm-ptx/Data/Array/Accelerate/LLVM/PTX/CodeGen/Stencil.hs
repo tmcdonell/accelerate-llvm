@@ -97,12 +97,12 @@ index2DToPair :: IR DIM2 -> (IR Int, IR Int)
 index2DToPair (IR (OP_Pair (OP_Pair OP_Unit y) x)) = (IR x, IR y)
 
 
-imapFromTo2d
+imapFromTo2D
   :: IR Int32 -> IR Int32
   -> IR Int32 -> IR Int32
   -> (IR Int32 -> IR Int32 -> CodeGen ())
   -> CodeGen ()
-imapFromTo2d startx endx starty endy body = do
+imapFromTo2D startx endx starty endy body = do
   --
   stepx <- gridSize
   stepy <- gridSizey
@@ -171,20 +171,46 @@ runRegion label (y0, x0) (y1, x1) paramGang ptx aenv f mBoundary ir =
       (arrOut, paramOut)       = mutableArray ("out" :: Name (Array DIM2 b))
       paramEnv                 = envParam aenv
   in makeOpenAcc ptx label (paramGang ++ paramOut ++ paramEnv) $ do
-    localWidth  <- sub numType x1 x0
-    localHeight <- sub numType y1 y0
-    endi        <- mul numType localWidth localHeight
-
-    x0' <- A.fromIntegral integralType numType x0
-    y0' <- A.fromIntegral integralType numType y0
-
-    imapFromTo (int32 0) (endi) $ \i -> do
-      localWidth'  <- A.fromIntegral integralType numType localWidth
-      localHeight' <- A.fromIntegral integralType numType localHeight
-      i'           <- A.fromIntegral integralType numType i -- loop counter is Int32
-      (x, y)       <- index2DToPair <$> indexOfInt (index2D localWidth' localHeight') i'
-      x'           <- add numType x x0'
-      y'           <- add numType y y0'
+    --
+    imapFromTo2D x0 x1 y0 y1 $ \x y -> do
+      x' <- A.fromIntegral integralType numType x
+      y' <- A.fromIntegral integralType numType y
       stencilElement mBoundary aenv f ir arrOut x' y'
-
+    --
     return_
+
+
+-- runRegion
+--     :: forall aenv stencil a b. (Stencil DIM2 a stencil, Elt b, Skeleton PTX)
+--     => Label
+--     -> (IR Int32, IR Int32)
+--     -> (IR Int32, IR Int32)
+--     -> [LLVM.Parameter]
+--     -> PTX
+--     -> Gamma aenv
+--     -> IRFun1 PTX aenv (stencil -> b)
+--     -> Maybe (Boundary (IR a))
+--     -> IRManifest PTX aenv (Array DIM2 a)
+--     -> CodeGen (IROpenAcc PTX aenv (Array DIM2 b))
+-- runRegion label (y0, x0) (y1, x1) paramGang ptx aenv f mBoundary ir =
+--   let
+--       (arrOut, paramOut)       = mutableArray ("out" :: Name (Array DIM2 b))
+--       paramEnv                 = envParam aenv
+--   in makeOpenAcc ptx label (paramGang ++ paramOut ++ paramEnv) $ do
+--     localWidth  <- sub numType x1 x0
+--     localHeight <- sub numType y1 y0
+--     endi        <- mul numType localWidth localHeight
+
+--     x0' <- A.fromIntegral integralType numType x0
+--     y0' <- A.fromIntegral integralType numType y0
+
+--     imapFromTo (int32 0) (endi) $ \i -> do
+--       localWidth'  <- A.fromIntegral integralType numType localWidth
+--       localHeight' <- A.fromIntegral integralType numType localHeight
+--       i'           <- A.fromIntegral integralType numType i -- loop counter is Int32
+--       (x, y)       <- index2DToPair <$> indexOfInt (index2D localWidth' localHeight') i'
+--       x'           <- add numType x x0'
+--       y'           <- add numType y y0'
+--       stencilElement mBoundary aenv f ir arrOut x' y'
+
+--     return_
