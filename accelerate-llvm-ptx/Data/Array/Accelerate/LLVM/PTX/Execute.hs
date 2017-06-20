@@ -659,10 +659,35 @@ executeOp2D
     -> args
     -> IO ()
 executeOp2D ptx@PTX{..} kernel@Kernel{..} gamma aenv stream r_x r_y args =
-  runExecutable fillP kernelName defaultPPT r_x $ \start_x end_x _ -> do
+  runExecutable fillP kernelName defaultPPT r_x $ \start_x end_x _ ->
     runExecutable fillP kernelName defaultPPT r_y $ \start_y end_y _ -> do
-      argv <- marshal ptx stream (i32 start_x, i32 end_x, i32 start_y, i32 end_y, args, (gamma,aenv))
+      argv <- marshal ptx stream ( i32 start_x, i32 end_x
+                                 , i32 start_y, i32 end_y, args, (gamma,aenv))
       launch2D kernel stream (end_x-start_x) (end_y-start_y) argv
+
+
+-- Execute the function implementing this kernel in 3D.
+--
+executeOp3D
+    :: Marshalable args
+    => PTX
+    -> Kernel
+    -> Gamma aenv
+    -> Aval aenv
+    -> Stream
+    -> Range
+    -> Range
+    -> Range
+    -> args
+    -> IO ()
+executeOp3D ptx@PTX{..} kernel@Kernel{..} gamma aenv stream r_x r_y r_z args =
+  runExecutable fillP kernelName defaultPPT r_x $ \start_x end_x _ ->
+    runExecutable fillP kernelName defaultPPT r_y $ \start_y end_y _ ->
+      runExecutable fillP kernelName defaultPPT r_z $ \start_z end_z _ -> do
+        argv <- marshal ptx stream ( i32 start_x, i32 end_x
+                                   , i32 start_y, i32 end_y
+                                   , i32 start_z, i32 end_z, args, (gamma,aenv))
+        launch2D kernel stream (end_x-start_x) (end_y-start_y) argv
 
 
 -- Execute a device function with the given thread configuration and function
