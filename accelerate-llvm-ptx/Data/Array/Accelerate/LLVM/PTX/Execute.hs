@@ -549,7 +549,7 @@ stencil12DOp
     -> Stream
     -> Array DIM2 a
     -> LLVM PTX (Array DIM2 b)
-stencil12DOp _ exe gamma aenv stream arr = do
+stencil12DOp _ exe gamma aenv streamM arr = do
   ptx <- gets llvmTarget
   let
       err     = $internalError "stencil12DOp" "kernel not found"
@@ -565,6 +565,11 @@ stencil12DOp _ exe gamma aenv stream arr = do
   --
   out <- allocateRemote $ shape arr
   --
+  streamL <- fork
+  streamR <- fork
+  streamT <- fork
+  streamB <- fork
+  --
   liftIO $ do
     let leftParams   = (i32   0                    , i32   borderWidth        , out)
         rightParams  = (i32 $ width  - borderWidth , i32   width              , out)
@@ -572,14 +577,20 @@ stencil12DOp _ exe gamma aenv stream arr = do
         bottomParams = (i32 $ height - borderHeight, i32   height             , out)
         middleParams = (i32   borderWidth          , i32 $ width - borderWidth, out)
     --
-    executeOp ptx kmiddle gamma aenv stream (IE borderHeight (height - borderHeight)) middleParams
+    executeOp ptx kmiddle gamma aenv streamL (IE borderHeight (height - borderHeight)) middleParams
     -- Exclude the corners from these sides.
-    executeOp ptx kedge   gamma aenv stream (IE borderHeight (height - borderHeight)) leftParams
-    executeOp ptx kedge   gamma aenv stream (IE borderHeight (height - borderHeight)) rightParams
+    executeOp ptx kedge   gamma aenv streamR (IE borderHeight (height - borderHeight)) leftParams
+    executeOp ptx kedge   gamma aenv streamT (IE borderHeight (height - borderHeight)) rightParams
     -- Include the corners in these sides.
-    executeOp ptx kend    gamma aenv stream (IE 0             width                 ) topParams
-    executeOp ptx kend    gamma aenv stream (IE 0             width                 ) bottomParams
-    --
+    executeOp ptx kend    gamma aenv streamB (IE 0             width                 ) topParams
+    executeOp ptx kend    gamma aenv streamM (IE 0             width                 ) bottomParams
+  --
+  close streamL
+  close streamR
+  close streamT
+  close streamB
+  close streamM
+  --
   return out
 
 stencil2Op
