@@ -20,8 +20,10 @@ module Data.Array.Accelerate.LLVM.PTX.CodeGen.Base (
   DeviceProperties, KernelMetadata(..),
 
   -- Thread identifiers
-  blockDim, gridDim, threadIdx, blockIdx, warpSize,
-  gridSize, globalThreadIdx,
+  blockDim , gridDim , threadIdx, blockIdx, warpSize,
+  blockDimy, gridDimy, threadIdy, blockIdy,
+  gridSize , globalThreadIdx,
+  gridSizey, globalThreadIdy,
   gangParam,
 
   -- Other intrinsics
@@ -142,7 +144,7 @@ _warpId :: CodeGen (IR Int32)
 _warpId = specialPTXReg "llvm.ptx.read.warpid"
 
 
--- | The size of the thread grid
+-- | The size of the thread grid in the x-axis
 --
 -- > gridDim.x * blockDim.x
 --
@@ -153,7 +155,18 @@ gridSize = do
   mul numType ncta nt
 
 
--- | The global thread index
+-- | The size of the thread grid in the y-axis
+--
+-- > gridDim.y * blockDim.y
+--
+gridSizey :: CodeGen (IR Int32)
+gridSizey = do
+  ncta  <- gridDimy
+  nt    <- blockDimy
+  mul numType ncta nt
+
+
+-- | The global thread index in the x-axis
 --
 -- > blockDim.x * blockIdx.x + threadIdx.x
 --
@@ -162,6 +175,21 @@ globalThreadIdx = do
   ntid  <- blockDim
   ctaid <- blockIdx
   tid   <- threadIdx
+  --
+  u     <- mul numType ntid ctaid
+  v     <- add numType tid u
+  return v
+
+
+-- | The global thread index in the y-axis
+--
+-- > blockDim.y * blockIdx.y + threadIdx.y
+--
+globalThreadIdy :: CodeGen (IR Int32)
+globalThreadIdy = do
+  ntid  <- blockDimy
+  ctaid <- blockIdy
+  tid   <- threadIdy
   --
   u     <- mul numType ntid ctaid
   v     <- add numType tid u
