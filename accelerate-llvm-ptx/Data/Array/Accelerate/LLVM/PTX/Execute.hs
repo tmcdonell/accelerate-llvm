@@ -577,13 +577,13 @@ stencil12DOp _ exe gamma aenv streamM arr = do
         bottomParams = (i32 $ height - borderHeight, i32   height             , out)
         middleParams = (i32   borderWidth          , i32 $ width - borderWidth, out)
     --
-    executeOp ptx kmiddle gamma aenv streamL (IE borderHeight (height - borderHeight)) middleParams
+    executeOp ptx kmiddle gamma aenv streamM (IE borderHeight (height - borderHeight)) middleParams
     -- Exclude the corners from these sides.
-    executeOp ptx kedge   gamma aenv streamR (IE borderHeight (height - borderHeight)) leftParams
-    executeOp ptx kedge   gamma aenv streamT (IE borderHeight (height - borderHeight)) rightParams
+    executeOp ptx kedge   gamma aenv streamL (IE borderHeight (height - borderHeight)) leftParams
+    executeOp ptx kedge   gamma aenv streamR (IE borderHeight (height - borderHeight)) rightParams
     -- Include the corners in these sides.
-    executeOp ptx kend    gamma aenv streamB (IE 0             width                 ) topParams
-    executeOp ptx kend    gamma aenv streamM (IE 0             width                 ) bottomParams
+    executeOp ptx kend    gamma aenv streamT (IE 0             width                 ) topParams
+    executeOp ptx kend    gamma aenv streamB (IE 0             width                 ) bottomParams
   --
   close streamL
   close streamR
