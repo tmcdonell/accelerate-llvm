@@ -642,7 +642,7 @@ executeOp
 executeOp ptx@PTX{..} kernel@Kernel{..} gamma aenv stream r args =
   runExecutable fillP kernelName defaultPPT r $ \start end _ -> do
     argv <- marshal ptx stream (i32 start, i32 end, args, (gamma,aenv))
-    launch kernel stream (end-start) 1 argv
+    launch1D kernel stream (end-start) argv
 
 
 -- Execute the function implementing this kernel in 2D.
@@ -662,21 +662,57 @@ executeOp2D ptx@PTX{..} kernel@Kernel{..} gamma aenv stream r_x r_y args =
   runExecutable fillP kernelName defaultPPT r_x $ \start_x end_x _ -> do
     runExecutable fillP kernelName defaultPPT r_y $ \start_y end_y _ -> do
       argv <- marshal ptx stream (i32 start_x, i32 end_x, i32 start_y, i32 end_y, args, (gamma,aenv))
-      launch kernel stream (end_x-start_x) (end_y-start_y) argv
+      launch2D kernel stream (end_x-start_x) (end_y-start_y) argv
+
+
+-- Execute a device function with the given thread configuration and function
+-- parameters in 1D.
+--
+launch1D :: Kernel -> Stream -> Int -> [CUDA.FunParam] -> IO ()
+launch1D kernel@Kernel{..} stream n =
+  when (n > 0) .
+  launch kernel stream
+    (kernelThreadBlockSize, 1, 1)
+    (kernelThreadBlocks n , 1, 1)
+
+
+-- Execute a device function with the given thread configuration and function
+-- parameters in 2D.
+--
+launch2D :: Kernel -> Stream -> Int -> Int -> [CUDA.FunParam] -> IO ()
+launch2D kernel@Kernel{..} stream n m =
+  when (n > 0) . when (m > 0) .
+  launch kernel stream
+    (kernelThreadBlockSize, kernelThreadBlockSize, 1)
+    (kernelThreadBlocks n , kernelThreadBlocks m , 1)
+
+
+-- Execute a device function with the given thread configuration and function
+-- parameters in 3D.
+--
+launch3D :: Kernel -> Stream -> Int -> Int -> Int -> [CUDA.FunParam] -> IO ()
+launch3D kernel@Kernel{..} stream n m o =
+  when (n > 0) . when (m > 0) . when (o > 0) .
+  launch kernel stream
+    (kernelThreadBlockSize, kernelThreadBlockSize, kernelThreadBlockSize)
+    (kernelThreadBlocks n , kernelThreadBlocks m , kernelThreadBlocks o )
 
 
 -- Execute a device function with the given thread configuration and function
 -- parameters.
 --
-launch :: Kernel -> Stream -> Int -> Int -> [CUDA.FunParam] -> IO ()
-launch Kernel{..} stream n m args =
-  when (n > 0) $
+launch
+  :: Kernel
+  -> Stream
+  -> (Int, Int, Int)
+  -> (Int, Int, Int)
+  -> [CUDA.FunParam]
+  -> IO ()
+launch Kernel{..} stream cta grid args =
   withLifetime stream $ \st ->
     Debug.monitorProcTime query msg (Just st) $
       CUDA.launchKernel kernelFun grid cta smem (Just st) args
   where
-    cta         = (kernelThreadBlockSize, 1, 1)
-    grid        = (kernelThreadBlocks n, 1, 1)
     smem        = kernelSharedMemBytes
 
     -- Debugging/monitoring support
