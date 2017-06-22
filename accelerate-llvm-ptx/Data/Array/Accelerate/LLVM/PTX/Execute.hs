@@ -724,8 +724,6 @@ launch2D kernel@Kernel{..} stream n m =
   launch kernel stream
     (kernelThreadBlockSize, 1, 1)
     (kernelThreadBlocks n , 1, 1)
-    -- (kernelThreadBlockSize, kernelThreadBlockSize, 1)
-    -- (kernelThreadBlocks n , kernelThreadBlocks m , 1)
 
 
 -- Execute a device function with the given thread configuration and function
@@ -735,8 +733,8 @@ launch3D :: Kernel -> Stream -> Int -> Int -> Int -> [CUDA.FunParam] -> IO ()
 launch3D kernel@Kernel{..} stream n m o =
   when (n > 0) . when (m > 0) . when (o > 0) .
   launch kernel stream
-    (kernelThreadBlockSize, kernelThreadBlockSize, kernelThreadBlockSize)
-    (kernelThreadBlocks n , kernelThreadBlocks m , kernelThreadBlocks o )
+    (kernelThreadBlockSize, 1, 1)
+    (kernelThreadBlocks n , 1, 1)
 
 
 -- Execute a device function with the given thread configuration and function
