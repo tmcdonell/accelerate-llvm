@@ -166,18 +166,83 @@ runRegion
     -> Maybe (Boundary (IR a))
     -> IRManifest PTX aenv (Array DIM2 a)
     -> CodeGen (IROpenAcc PTX aenv (Array DIM2 b))
-runRegion label (y0, x0) (y1, x1) paramGang ptx aenv f mBoundary ir =
+runRegion label (starty, startx) (y1, x1) paramGang ptx aenv f mBoundary ir@(IRManifest v) =
   let
       (arrOut, paramOut)       = mutableArray ("out" :: Name (Array DIM2 b))
       paramEnv                 = envParam aenv
   in makeOpenAcc ptx label (paramGang ++ paramOut ++ paramEnv) $ do
     --
-    imapFromTo2D x0 x1 y0 y1 $ \x y -> do
-      x' <- A.fromIntegral integralType numType x
+    stepx  <- gridSize
+    stepy  <- gridSizey
+    step4y <- mul numType (int32 4) =<< gridSizey
+    --
+    tidx  <- globalThreadIdx
+    tidy  <- globalThreadIdy
+    --
+    x0    <- add numType tidx startx
+    y0    <- add numType starty =<< mul numType tidy (int32 4)
+    --
+    yend <- sub numType y1 (int32 3)
+    --
+    imapFromStepTo y0 step4y yend $ \y -> do
+      y_0 <- A.fromIntegral integralType numType y
+      y_1 <- add numType y_0 (int 1)
+      y_2 <- add numType y_0 (int 2)
+      y_3 <- add numType y_0 (int 3)
+      imapFromStepTo x0 stepx x1 $ \x -> do
+        x' <- A.fromIntegral integralType numType x
+        let ix = index2D x' y_0
+        i0 <- intOfIndex (irArrayShape arrOut) ix
+        i1 <- intOfIndex (irArrayShape arrOut) (index2D x' y_1)
+        i2 <- intOfIndex (irArrayShape arrOut) (index2D x' y_2)
+        i3 <- intOfIndex (irArrayShape arrOut) (index2D x' y_3)
+        (s0, s1, s2, s3) <- stencilAccesses mBoundary (irArray (aprj v aenv)) ix
+        r0 <- app1 f s0
+        r1 <- app1 f s1
+        r2 <- app1 f s2
+        r3 <- app1 f s3
+        writeArray arrOut i0 r0
+        writeArray arrOut i1 r1
+        writeArray arrOut i2 r2
+        writeArray arrOut i3 r3
+    -- Do the last few rows that aren't in the groups of 4.
+    yrange    <- sub numType y1 starty
+    remainder <- A.rem integralType yrange (int32 4)
+    starty'   <- add numType tidy =<< sub numType y1 remainder
+    --
+    imapFromStepTo starty' stepy y1 $ \y -> do
       y' <- A.fromIntegral integralType numType y
-      stencilElement mBoundary aenv f ir arrOut x' y'
+      imapFromStepTo x0 stepx x1 $ \x -> do
+        x' <- A.fromIntegral integralType numType x
+        stencilElement mBoundary aenv f ir arrOut x' y'
     --
     return_
+
+
+-- runRegion
+--     :: forall aenv stencil a b. (Stencil DIM2 a stencil, Elt b, Skeleton PTX)
+--     => Label
+--     -> (IR Int32, IR Int32)
+--     -> (IR Int32, IR Int32)
+--     -> [LLVM.Parameter]
+--     -> PTX
+--     -> Gamma aenv
+--     -> IRFun1 PTX aenv (stencil -> b)
+--     -> Maybe (Boundary (IR a))
+--     -> IRManifest PTX aenv (Array DIM2 a)
+--     -> CodeGen (IROpenAcc PTX aenv (Array DIM2 b))
+-- runRegion label (y0, x0) (y1, x1) paramGang ptx aenv f mBoundary ir =
+--   let
+--       (arrOut, paramOut)       = mutableArray ("out" :: Name (Array DIM2 b))
+--       paramEnv                 = envParam aenv
+--   in makeOpenAcc ptx label (paramGang ++ paramOut ++ paramEnv) $ do
+--     --
+--     imapFromTo2D x0 x1 y0 y1 $ \x y -> do
+--       x' <- A.fromIntegral integralType numType x
+--       y' <- A.fromIntegral integralType numType y
+--       stencilElement mBoundary aenv f ir arrOut x' y'
+--     --
+--     return_
 
 
 -- runRegion
