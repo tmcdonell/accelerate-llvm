@@ -555,7 +555,6 @@ stencil12DOp _ exe gamma aenv streamM arr = do
       err     = $internalError "stencil12DOp" "kernel not found"
       kmiddle = fromMaybe err (lookupKernel "stencil2DMiddle" exe)
       kedge   = fromMaybe err (lookupKernel "stencil2DEdge"   exe)
-      kend    = fromMaybe err (lookupKernel "stencil2DEnd"    exe)
       shapes  = offsets (undefined :: Fun aenv (stencil -> b))
                         (undefined :: OpenAcc aenv (Array DIM2 a))
       (borderWidth, borderHeight) = case shapes of
@@ -594,10 +593,10 @@ stencil12DOp _ exe gamma aenv streamM arr = do
     executeOp2D ptx kedge   gamma aenv streamR (IE  borderHeight           (height - borderHeight))
                                                (IE (width  - borderWidth )  width                 ) out
     -- Include the corners in these sides.
-    executeOp2D ptx kend    gamma aenv streamT (IE  0                       width                 )
-                                               (IE  0                       borderHeight          ) out
-    executeOp2D ptx kend    gamma aenv streamB (IE  0                       width                 )
-                                               (IE (height - borderHeight)  height                ) out
+    executeOp2D ptx kedge   gamma aenv streamT (IE  0                       borderHeight          )
+                                               (IE  0                       width                 ) out
+    executeOp2D ptx kedge   gamma aenv streamB (IE (height - borderHeight)  height                )
+                                               (IE  0                       width                 ) out
   --
   close streamL
   close streamR

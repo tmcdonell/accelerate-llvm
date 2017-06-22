@@ -150,7 +150,6 @@ mkStencil2D ptx aenv f boundary ir =
   in foldr1 (+++) <$> sequence
        [ runRegion "stencil2DMiddle" (y0, x0) (y1, x1) paramGang ptx aenv f  Nothing        ir
        , runRegion "stencil2DEdge"   (y0, x0) (y1, x1) paramGang ptx aenv f (Just boundary) ir
-       , runRegion "stencil2DEnd"    (x0, y0) (x1, y1) paramGang ptx aenv f (Just boundary) ir
        ]
 
 
