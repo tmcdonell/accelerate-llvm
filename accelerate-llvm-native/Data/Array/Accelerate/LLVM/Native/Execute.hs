@@ -492,7 +492,7 @@ stencil12DOp
     -> Stream
     -> Array DIM2 a
     -> LLVM Native (Array DIM2 b)
-stencil12DOp _ kernel@NativeR{..} gamma aenv stream arr = do
+stencil12DOp _ NativeR{..} gamma aenv _ arr = do
   Native{..} <- gets llvmTarget
   let
       ncpu   = gangSize
@@ -500,6 +500,7 @@ stencil12DOp _ kernel@NativeR{..} gamma aenv stream arr = do
                        (undefined :: OpenAcc aenv (Array DIM2 a))
       (borderWidth, borderHeight) = case shapes of
           (Z :. y :. x):_ -> (-x, -y)
+          _               -> $internalError "stencil12DOp" "shape error"
       (width, height) = case (shape arr) of
           (Z :. y :. x) -> (x, y)
       fillType = if ncpu == 1
