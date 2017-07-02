@@ -559,50 +559,29 @@ stencil12DOp _ exe gamma aenv streamM arr = do
                         (undefined :: OpenAcc aenv (Array DIM2 a))
       (borderWidth, borderHeight) = case shapes of
           (Z :. y :. x):_ -> (-x, -y)
+          _               -> $internalError "stencil12DOp" "shape error"
       (width, height) = case (shape arr) of
           (Z :. y :. x) -> (x, y)
   --
   out <- allocateRemote $ shape arr
   --
-  streamL <- fork
-  streamR <- fork
-  streamT <- fork
-  streamB <- fork
-  --
-  -- liftIO $ do
-  --   let leftParams   = (i32   0                    , i32   borderWidth        , out)
-  --       rightParams  = (i32 $ width  - borderWidth , i32   width              , out)
-  --       topParams    = (i32   0                    , i32   borderHeight       , out)
-  --       bottomParams = (i32 $ height - borderHeight, i32   height             , out)
-  --       middleParams = (i32   borderWidth          , i32 $ width - borderWidth, out)
-  --   --
-  --   executeOp ptx kmiddle gamma aenv streamM (IE borderHeight (height - borderHeight)) middleParams
-  --   -- Exclude the corners from these sides.
-  --   executeOp ptx kedge   gamma aenv streamL (IE borderHeight (height - borderHeight)) leftParams
-  --   executeOp ptx kedge   gamma aenv streamR (IE borderHeight (height - borderHeight)) rightParams
-  --   -- Include the corners in these sides.
-  --   executeOp ptx kend    gamma aenv streamT (IE 0             width                 ) topParams
-  --   executeOp ptx kend    gamma aenv streamB (IE 0             width                 ) bottomParams
+  streamE <- fork
   --
   liftIO $ do
     executeOp2D ptx kmiddle gamma aenv streamM (IE  borderHeight           (height - borderHeight))
                                                (IE  borderWidth            (width - borderWidth  )) out
     -- Exclude the corners from these sides.
-    executeOp2D ptx kedge   gamma aenv streamL (IE  borderHeight           (height - borderHeight))
+    executeOp2D ptx kedge   gamma aenv streamE (IE  borderHeight           (height - borderHeight))
                                                (IE  0                       borderWidth           ) out
-    executeOp2D ptx kedge   gamma aenv streamR (IE  borderHeight           (height - borderHeight))
+    executeOp2D ptx kedge   gamma aenv streamE (IE  borderHeight           (height - borderHeight))
                                                (IE (width  - borderWidth )  width                 ) out
     -- Include the corners in these sides.
-    executeOp2D ptx kedge   gamma aenv streamT (IE  0                       borderHeight          )
+    executeOp2D ptx kedge   gamma aenv streamE (IE  0                       borderHeight          )
                                                (IE  0                       width                 ) out
-    executeOp2D ptx kedge   gamma aenv streamB (IE (height - borderHeight)  height                )
+    executeOp2D ptx kedge   gamma aenv streamE (IE (height - borderHeight)  height                )
                                                (IE  0                       width                 ) out
   --
-  close streamL
-  close streamR
-  close streamT
-  close streamB
-  close streamM
+  after streamM =<< checkpoint streamE
   --
   return out
 

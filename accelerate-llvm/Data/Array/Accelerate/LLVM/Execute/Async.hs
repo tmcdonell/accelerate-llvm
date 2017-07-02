@@ -65,16 +65,6 @@ class Async arch where
   --
   block       :: EventR arch -> LLVM arch ()
 
-  -- | Block execution of the calling thread until the given stream has
-  -- completed all of its current work.
-  wait        :: StreamR arch -> LLVM arch ()
-  wait        =  (block =<<) . checkpoint
-
-  -- | Mark the given execution stream as closed and block execution of the
-  -- calling thread until the stream has completed its work.
-  close       :: StreamR arch -> LLVM arch ()
-  close s     =  join s >> wait s
-
 
 -- | Wait for an asynchronous operation to complete, then return it.
 --
