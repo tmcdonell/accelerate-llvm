@@ -485,9 +485,6 @@ stencil12DOp _ exe gamma aenv _ arr = withExecutable exe $ \nativeExecutable -> 
           _               -> $internalError "stencil12DOp" "shape error"
       (width, height) = case (shape arr) of
           (Z :. y :. x) -> (x, y)
-      fillType = if ncpu == 1
-        then fillS -- Sequential stencil operation
-        else fillP -- Parallel stencil operation
   --
   liftIO $ do
     out <- allocateArray $ shape arr
@@ -496,7 +493,7 @@ stencil12DOp _ exe gamma aenv _ arr = withExecutable exe $ \nativeExecutable -> 
     let rowsPerRun   = height `div` ncpu * 10
 
     -- Core stencil region, without boundary checks
-    executeOp rowsPerRun fillType (nativeExecutable !# "stencil2DMiddle" ) gamma aenv (IE borderHeight (height - borderHeight)) middleParams
+    executeOp rowsPerRun fillP (nativeExecutable !# "stencil2DMiddle" ) gamma aenv (IE borderHeight (height - borderHeight)) middleParams
 
     -- Exclude the corners from these sides
     executeOp 1 fillS (nativeExecutable !# "stencil2DLeftRight" ) gamma aenv (IE borderHeight (height - borderHeight)) sidesParams
