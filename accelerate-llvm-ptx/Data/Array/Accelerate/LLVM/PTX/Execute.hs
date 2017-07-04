@@ -538,19 +538,27 @@ stencil12DOp
     -> Stream
     -> Array DIM2 a
     -> LLVM PTX (Array DIM2 b)
-stencil12DOp _ exe gamma aenv streamM arr = withExecutable exe $ \ptxExecutable -> do
+stencil12DOp stencilR exe gamma aenv streamM arr = withExecutable exe $ \ptxExecutable -> do
   ptx <- gets llvmTarget
   let
       kmiddle = ptxExecutable !# "stencil2DMiddle"
       kedge   = ptxExecutable !# "stencil2DEdge"
-      shapes  = error "stencil12DOp: TODO"
-      -- shapes  = offsets (undefined :: Fun aenv (stencil -> b))
-      --                   (undefined :: OpenAcc aenv (Array DIM2 a))
-      (borderWidth, borderHeight) = case shapes of
-          (Z :. y :. x):_ -> (-x, -y)
-          _               -> $internalError "stencil12DOp" "shape error"
-      (width, height) = case (shape arr) of
-          (Z :. y :. x) -> (x, y)
+
+      Z :. height :. width        = shape arr
+      (borderHeight, borderWidth) =
+        let
+            go :: StencilR DIM1 e s -> Int
+            go StencilRunit3 = 3
+            go StencilRunit5 = 5
+            go StencilRunit7 = 7
+            go StencilRunit9 = 9
+            go _             = $internalError "stencil1Op" "expected 2D stencil"
+        in
+        case stencilR of
+          StencilRtup3 a b c             -> (3, maximum [go a, go b, go c])
+          StencilRtup5 a b c d e         -> (5, maximum [go a, go b, go c, go d, go e])
+          StencilRtup7 a b c d e f g     -> (7, maximum [go a, go b, go c, go d, go e, go f, go g])
+          StencilRtup9 a b c d e f g h i -> (9, maximum [go a, go b, go c, go d, go e, go f, go g, go h, go i])
   --
   out <- allocateRemote $ shape arr
   --
