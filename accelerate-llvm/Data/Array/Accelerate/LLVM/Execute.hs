@@ -338,7 +338,7 @@ executeOpenAcc !topAcc !aenv !stream = travA topAcc
         Scanr' sh         -> scanr' kernel gamma aenv stream =<< travE sh
         Permute sh d      -> id =<< permute kernel gamma aenv stream (inplace d) <$> travE sh <*> travA d
         Stencil2 s t a b  -> id =<< stencil2 s t kernel gamma aenv stream <$> avar a <*> avar b
-        Stencil s a       -> stencil1 s kernel gamma aenv stream =<< avar a
+        Stencil1 s a      -> stencil1 s kernel gamma aenv stream =<< avar a
 
     travAF :: ExecOpenAfun arch aenv (a -> b) -> AsyncR arch a -> LLVM arch b
     travAF (Alam (Abody f)) a = get =<< async (executeOpenAcc f (aenv `Apush` a))

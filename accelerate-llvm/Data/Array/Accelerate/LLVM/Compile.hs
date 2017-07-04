@@ -202,7 +202,7 @@ compileOpenAcc = traverseAcc
                  => CompiledFun arch aenv (stencil -> b)
                  -> Idx aenv (Array sh a)
                  -> AST.PreOpenAccSkeleton acc aenv (Array sh b)
-        stencil1 _ a = AST.Stencil (stencil :: StencilR sh a stencil) a
+        stencil1 _ a = AST.Stencil1 (stencil :: StencilR sh a stencil) a
 
         stencil2 :: forall acc sh stencil1 stencil2 a b c. (Stencil sh a stencil1, Stencil sh b stencil2, Elt c)
                  => CompiledFun arch aenv (stencil1 -> stencil2 -> c)
