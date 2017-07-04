@@ -8,34 +8,43 @@ packages:
 - 'accelerate-llvm-native'
 - 'accelerate-llvm-ptx'
 
-# extra-deps:
 - location:
-    git:    https://github.com/AccelerateHS/accelerate.git
-    commit: a250e2b82b1730016bb018277b5e6205d6d229fb
+    git:    https://github.com/tmcdonell/accelerate.git
+    commit: 0216f1afef4460b672235c81a8e6f954efb650e3
+  extra-dep: true
+
+- location:
+    git:    https://github.com/tmcdonell/cuda.git
+    commit: 1bff17152088384b71a439b01ec993a54e2618c9
   extra-dep: true
 
 extra-deps:
 - 'atomic-primops-0.8.0.2'
+- 'attoparsec-0.13.1.0'
 - 'base-orphans-0.4.4'
 - 'Cabal-1.24.2.0'
 - 'chaselev-deque-0.5.0.5'
-- 'cuda-0.7.5.3'
+# - 'cuda-0.7.5.3'
+- 'fail-4.9.0.0'
 - 'libffi-0.1'
-- 'llvm-hs-4.0.0.0'
-- 'llvm-hs-pure-4.0.0.0'
+- 'llvm-hs-4.1.0.0'
+- 'llvm-hs-pure-4.1.0.0'
 - 'mtl-2.2.1'
-- 'nvvm-0.7.5.1'
+- 'nvvm-0.7.5.2'
+- 'process-1.4.3.0'
 - 'semigroups-0.18.1'
+- 'th-lift-instances-0.1.11'
 - 'transformers-0.4.3.0'
 - 'transformers-compat-0.4.0.4'
 - 'unique-0'
+- 'vector-0.11.0.0'
 
 # Override default flag values for local packages and extra-deps
 flags:
   accelerate:
     unsafe-checks: false
     bounds-checks: true
-    debug: false
+    debug: true
     ekg: false
     internal-checks: false
   accelerate-llvm:

@@ -1,6 +1,7 @@
 {-# LANGUAGE CPP                 #-}
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE GADTs               #-}
+{-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell     #-}
@@ -19,7 +20,8 @@
 
 module Data.Array.Accelerate.LLVM.PTX.Execute (
 
-  executeAcc, executeAfun1,
+  executeAcc, executeAfun,
+  executeOpenAcc,
 
 ) where
 
@@ -38,10 +40,10 @@ import Data.Array.Accelerate.LLVM.State
 import Data.Array.Accelerate.LLVM.PTX.Analysis.Launch           ( multipleOf )
 import Data.Array.Accelerate.LLVM.PTX.Array.Data
 import Data.Array.Accelerate.LLVM.PTX.Array.Prim                ( memsetArrayAsync )
-import Data.Array.Accelerate.LLVM.PTX.Compile
 import Data.Array.Accelerate.LLVM.PTX.Execute.Async
 import Data.Array.Accelerate.LLVM.PTX.Execute.Environment
 import Data.Array.Accelerate.LLVM.PTX.Execute.Marshal
+import Data.Array.Accelerate.LLVM.PTX.Link
 import Data.Array.Accelerate.LLVM.PTX.Target
 import qualified Data.Array.Accelerate.LLVM.PTX.Debug           as Debug
 
@@ -54,6 +56,7 @@ import qualified Foreign.CUDA.Driver                            as CUDA
 -- library
 import Control.Monad                                            ( when )
 import Control.Monad.State                                      ( gets, liftIO )
+import Data.ByteString.Short.Char8                              ( ShortByteString, unpack )
 import Data.Int                                                 ( Int32 )
 import Data.List                                                ( find )
 import Data.Maybe                                               ( fromMaybe )
@@ -112,8 +115,8 @@ simpleOp
     -> Stream
     -> sh
     -> LLVM PTX (Array sh e)
-simpleOp exe gamma aenv stream sh = do
-  let kernel  = case ptxKernel exe of
+simpleOp exe gamma aenv stream sh = withExecutable exe $ \ptxExecutable -> do
+  let kernel  = case functionTable ptxExecutable of
                   k:_ -> k
                   _   -> $internalError "simpleOp" "no kernels found"
   --
@@ -124,20 +127,17 @@ simpleOp exe gamma aenv stream sh = do
 
 simpleNamed
     :: (Shape sh, Elt e)
-    => String
+    => ShortByteString
     -> ExecutableR PTX
     -> Gamma aenv
     -> Aval aenv
     -> Stream
     -> sh
     -> LLVM PTX (Array sh e)
-simpleNamed fun exe gamma aenv stream sh = do
-  let kernel  = fromMaybe ($internalError "simpleNamed" ("not found: " ++ fun))
-              $ lookupKernel fun exe
-  --
+simpleNamed fun exe gamma aenv stream sh = withExecutable exe $ \ptxExecutable -> do
   out <- allocateRemote sh
   ptx <- gets llvmTarget
-  liftIO $ executeOp ptx kernel gamma aenv stream (IE 0 (size sh)) out
+  liftIO $ executeOp ptx (ptxExecutable !# fun) gamma aenv stream (IE 0 (size sh)) out
   return out
 
 
@@ -206,13 +206,12 @@ foldAllOp
     -> Stream
     -> DIM1
     -> LLVM PTX (Scalar e)
-foldAllOp exe gamma aenv stream (Z :. n) = do
+foldAllOp exe gamma aenv stream (Z :. n) = withExecutable exe $ \ptxExecutable -> do
   ptx <- gets llvmTarget
   let
-      err     = $internalError "foldAll" "kernel not found"
-      ks      = fromMaybe err (lookupKernel "foldAllS"  exe)
-      km1     = fromMaybe err (lookupKernel "foldAllM1" exe)
-      km2     = fromMaybe err (lookupKernel "foldAllM2" exe)
+      ks      = ptxExecutable !# "foldAllS"
+      km1     = ptxExecutable !# "foldAllM1"
+      km2     = ptxExecutable !# "foldAllM2"
   --
   if kernelThreadBlocks ks n == 1
     then do
@@ -249,12 +248,11 @@ foldDimOp
     -> Stream
     -> (sh :. Int)
     -> LLVM PTX (Array sh e)
-foldDimOp exe gamma aenv stream (sh :. sz) = do
+foldDimOp exe gamma aenv stream (sh :. sz) = withExecutable exe $ \ptxExecutable -> do
   let
-      kernel  = fromMaybe ($internalError "foldDim" "kernel not found")
-              $ if sz > 0
-                  then lookupKernel "fold"     exe
-                  else lookupKernel "generate" exe
+      kernel  = if sz > 0
+                  then ptxExecutable !# "fold"
+                  else ptxExecutable !# "generate"
   --
   out <- allocateRemote sh
   ptx <- gets llvmTarget
@@ -271,22 +269,21 @@ foldSegOp
     -> (sh :. Int)
     -> (Z  :. Int)
     -> LLVM PTX (Array (sh :. Int) e)
-foldSegOp exe gamma aenv stream (sh :. sz) (Z :. ss) = do
-  let n       = ss - 1  -- segments array has been 'scanl (+) 0'`ed
+foldSegOp exe gamma aenv stream (sh :. sz) (Z :. ss) = withExecutable exe $ \ptxExecutable -> do
+  let
+      n       = ss - 1  -- segments array has been 'scanl (+) 0'`ed
       m       = size sh * n
       foldseg = if (sz`quot`ss) < (2 * kernelThreadBlockSize foldseg_cta)
                   then foldseg_warp
                   else foldseg_cta
       --
-      err           = $internalError "foldSeg" "kernel not found"
-      foldseg_cta   = fromMaybe err $ lookupKernel "foldSeg_block" exe
-      foldseg_warp  = fromMaybe err $ lookupKernel "foldSeg_warp"  exe
-      -- qinit         = fromMaybe err $ lookupKernel "qinit"         exe
+      foldseg_cta   = ptxExecutable !# "foldSeg_block"
+      foldseg_warp  = ptxExecutable !# "foldSeg_warp"
+      -- qinit         = ptxExecutable !# "qinit"
   --
   out <- allocateRemote (sh :. n)
   ptx <- gets llvmTarget
-  liftIO $ do
-    executeOp ptx foldseg gamma aenv stream (IE 0 m) out
+  liftIO $ executeOp ptx foldseg gamma aenv stream (IE 0 m) out
   return out
 
 
@@ -342,12 +339,11 @@ scanAllOp
     -> Int                    -- input size
     -> Int                    -- output size
     -> LLVM PTX (Vector e)
-scanAllOp exe gamma aenv stream n m = do
+scanAllOp exe gamma aenv stream n m = withExecutable exe $ \ptxExecutable -> do
   let
-      err = $internalError "scanAllOp" "kernel not found"
-      k1  = fromMaybe err (lookupKernel "scanP1" exe)
-      k2  = fromMaybe err (lookupKernel "scanP2" exe)
-      k3  = fromMaybe err (lookupKernel "scanP3" exe)
+      k1  = ptxExecutable !# "scanP1"
+      k2  = ptxExecutable !# "scanP2"
+      k3  = ptxExecutable !# "scanP3"
       --
       c   = kernelThreadBlockSize k1
       s   = n `multipleOf` c
@@ -379,14 +375,10 @@ scanDimOp
     -> sh
     -> Int
     -> LLVM PTX (Array (sh:.Int) e)
-scanDimOp exe gamma aenv stream sz m = do
-  let
-      kernel = fromMaybe ($internalError "scanDimOp" "kernel not found")
-             $ lookupKernel "scan" exe
-  --
+scanDimOp exe gamma aenv stream sz m = withExecutable exe $ \ptxExecutable -> do
   ptx <- gets llvmTarget
   out <- allocateRemote (sz :. m)
-  liftIO $ executeOp ptx kernel gamma aenv stream (IE 0 (size sz)) out
+  liftIO $ executeOp ptx (ptxExecutable !# "scan") gamma aenv stream (IE 0 (size sz)) out
   return out
 
 
@@ -428,12 +420,11 @@ scan'AllOp
     -> Stream
     -> DIM1
     -> LLVM PTX (Vector e, Scalar e)
-scan'AllOp exe gamma aenv stream (Z :. n) = do
+scan'AllOp exe gamma aenv stream (Z :. n) = withExecutable exe $ \ptxExecutable -> do
   let
-      err = $internalError "scan'AllOp" "kernel not found"
-      k1  = fromMaybe err (lookupKernel "scanP1" exe)
-      k2  = fromMaybe err (lookupKernel "scanP2" exe)
-      k3  = fromMaybe err (lookupKernel "scanP3" exe)
+      k1  = ptxExecutable !# "scanP1"
+      k2  = ptxExecutable !# "scanP2"
+      k3  = ptxExecutable !# "scanP3"
       --
       c   = kernelThreadBlockSize k1
       s   = n `multipleOf` c
@@ -467,14 +458,11 @@ scan'DimOp
     -> Stream
     -> sh :. Int
     -> LLVM PTX (Array (sh:.Int) e, Array sh e)
-scan'DimOp exe gamma aenv stream sh@(sz :. _) = do
-  let kernel = fromMaybe ($internalError "scan'DimOp" "kernel not found")
-             $ lookupKernel "scan" exe
-  --
+scan'DimOp exe gamma aenv stream sh@(sz :. _) = withExecutable exe $ \ptxExecutable -> do
   ptx <- gets llvmTarget
   out <- allocateRemote sh
   sum <- allocateRemote sz
-  liftIO $ executeOp ptx kernel gamma aenv stream (IE 0 (size sz)) (out,sum)
+  liftIO $ executeOp ptx (ptxExecutable !# "scan") gamma aenv stream (IE 0 (size sz)) (out,sum)
   return (out,sum)
 
 
@@ -488,10 +476,11 @@ permuteOp
     -> sh
     -> Array sh' e
     -> LLVM PTX (Array sh' e)
-permuteOp exe gamma aenv stream inplace shIn dfs = do
-  let n       = size shIn
+permuteOp exe gamma aenv stream inplace shIn dfs = withExecutable exe $ \ptxExecutable -> do
+  let
+      n       = size shIn
       m       = size (shape dfs)
-      kernel  = case ptxKernel exe of
+      kernel  = case functionTable ptxExecutable of
                   k:_ -> k
                   _   -> $internalError "permute" "no kernels found"
   --
@@ -514,17 +503,17 @@ permuteOp exe gamma aenv stream inplace shIn dfs = do
 -- Using the defaulting instances for stencil operations (for now).
 --
 stencil1Op
-    :: forall aenv stencil sh a b. (Stencil sh a stencil, Shape sh, Elt b)
-    => Proxy (stencil -> b)
+    :: forall aenv stencil sh a b. (Shape sh, Elt b)
+    => StencilR sh a stencil
     -> ExecutableR PTX
     -> Gamma aenv
     -> Aval aenv
     -> Stream
     -> Array sh a
     -> LLVM PTX (Array sh b)
-stencil1Op proxy
+stencil1Op s
   | Just Refl <- matchShapeType (undefined :: DIM2) (undefined :: sh)
-  = stencil12DOp proxy
+  = stencil12DOp s
   --
   | otherwise
   = stencil1AllOp
@@ -541,22 +530,22 @@ stencil1AllOp kernel gamma aenv stream arr =
   simpleOp kernel gamma aenv stream (shape arr)
 
 stencil12DOp
-    :: forall aenv a b stencil. (Stencil DIM2 a stencil, Elt b)
-    => Proxy (stencil -> b)
+    :: forall aenv a b stencil. Elt b
+    => StencilR DIM2 a stencil
     -> ExecutableR PTX
     -> Gamma aenv
     -> Aval aenv
     -> Stream
     -> Array DIM2 a
     -> LLVM PTX (Array DIM2 b)
-stencil12DOp _ exe gamma aenv streamM arr = do
+stencil12DOp _ exe gamma aenv streamM arr = withExecutable exe $ \ptxExecutable -> do
   ptx <- gets llvmTarget
   let
-      err     = $internalError "stencil12DOp" "kernel not found"
-      kmiddle = fromMaybe err (lookupKernel "stencil2DMiddle" exe)
-      kedge   = fromMaybe err (lookupKernel "stencil2DEdge"   exe)
-      shapes  = offsets (undefined :: Fun aenv (stencil -> b))
-                        (undefined :: OpenAcc aenv (Array DIM2 a))
+      kmiddle = ptxExecutable !# "stencil2DMiddle"
+      kedge   = ptxExecutable !# "stencil2DEdge"
+      shapes  = error "stencil12DOp: TODO"
+      -- shapes  = offsets (undefined :: Fun aenv (stencil -> b))
+      --                   (undefined :: OpenAcc aenv (Array DIM2 a))
       (borderWidth, borderHeight) = case shapes of
           (Z :. y :. x):_ -> (-x, -y)
           _               -> $internalError "stencil12DOp" "shape error"
@@ -587,7 +576,8 @@ stencil12DOp _ exe gamma aenv streamM arr = do
 
 stencil2Op
     :: (Shape sh, Elt c)
-    => Proxy (stencil1 -> stencil2 -> c)
+    => StencilR sh a stencil1
+    -> StencilR sh b stencil2
     -> ExecutableR PTX
     -> Gamma aenv
     -> Aval aenv
@@ -595,7 +585,7 @@ stencil2Op
     -> Array sh a
     -> Array sh b
     -> LLVM PTX (Array sh c)
-stencil2Op _ exe gamma aenv stream arr brr =
+stencil2Op _ _ exe gamma aenv stream arr brr =
   simpleOp exe gamma aenv stream (shape arr `intersect` shape brr)
 
 
@@ -614,9 +604,14 @@ i32 = fromIntegral
 
 -- | Retrieve the named kernel
 --
-lookupKernel :: String -> ExecutableR PTX -> Maybe Kernel
-lookupKernel name exe =
-  find (\k -> kernelName k == name) (ptxKernel exe)
+(!#) :: FunctionTable -> ShortByteString -> Kernel
+(!#) exe name
+  = fromMaybe ($internalError "lookupFunction" ("function not found: " ++ unpack name))
+  $ lookupKernel name exe
+
+lookupKernel :: ShortByteString -> FunctionTable -> Maybe Kernel
+lookupKernel name ptxExecutable =
+  find (\k -> kernelName k == name) (functionTable ptxExecutable)
 
 
 -- Execute the function implementing this kernel.
@@ -730,17 +725,17 @@ launch Kernel{..} stream cta grid args =
     Debug.monitorProcTime query msg (Just st) $
       CUDA.launchKernel kernelFun grid cta smem (Just st) args
   where
-    smem        = kernelSharedMemBytes
+    smem  = kernelSharedMemBytes
 
     -- Debugging/monitoring support
-    query       = if Debug.monitoringIsEnabled
-                    then return True
-                    else Debug.queryFlag Debug.dump_exec
+    query = if Debug.monitoringIsEnabled
+              then return True
+              else Debug.queryFlag Debug.dump_exec
 
     fst3 (x,_,_)      = x
     msg wall cpu gpu  = do
       Debug.addProcessorTime Debug.PTX gpu
       Debug.traceIO Debug.dump_exec $
         printf "exec: %s <<< %d, %d, %d >>> %s"
-               kernelName (fst3 grid) (fst3 cta) smem (Debug.elapsed wall cpu gpu)
+               (unpack kernelName) (fst3 grid) (fst3 cta) smem (Debug.elapsed wall cpu gpu)
 
