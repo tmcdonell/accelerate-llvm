@@ -496,7 +496,7 @@ stencil12DOp stencilR exe gamma aenv () arr = withExecutable exe $ \nativeExecut
     out <- allocateArray $ shape arr
     let sidesParams  = (borderWidth, borderHeight, width, height, out)
     let middleParams = (borderWidth, width - borderWidth, out)
-    let rowsPerRun   = height `quot` (gangSize * 10)
+    let rowsPerRun   = 1 `max` (height `quot` (gangSize * 10))
 
     -- Core stencil region, without boundary checks
     executeOp rowsPerRun fillP (nativeExecutable !# "stencil2DMiddle") gamma aenv (IE borderHeight (height - borderHeight)) middleParams
