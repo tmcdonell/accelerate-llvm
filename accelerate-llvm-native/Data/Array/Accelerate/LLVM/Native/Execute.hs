@@ -480,17 +480,17 @@ stencil12DOp stencilR exe gamma aenv () arr = withExecutable exe $ \nativeExecut
       (borderHeight, borderWidth) =
         let
             go :: StencilR DIM1 e s -> Int
-            go StencilRunit3 = 3
-            go StencilRunit5 = 5
-            go StencilRunit7 = 7
-            go StencilRunit9 = 9
+            go StencilRunit3 = 1
+            go StencilRunit5 = 2
+            go StencilRunit7 = 3
+            go StencilRunit9 = 4
             go _             = $internalError "stencil1Op" "expected 2D stencil"
         in
         case stencilR of
-          StencilRtup3 a b c             -> (3, maximum [go a, go b, go c])
-          StencilRtup5 a b c d e         -> (5, maximum [go a, go b, go c, go d, go e])
-          StencilRtup7 a b c d e f g     -> (7, maximum [go a, go b, go c, go d, go e, go f, go g])
-          StencilRtup9 a b c d e f g h i -> (9, maximum [go a, go b, go c, go d, go e, go f, go g, go h, go i])
+          StencilRtup3 a b c             -> (1, maximum [go a, go b, go c])
+          StencilRtup5 a b c d e         -> (2, maximum [go a, go b, go c, go d, go e])
+          StencilRtup7 a b c d e f g     -> (3, maximum [go a, go b, go c, go d, go e, go f, go g])
+          StencilRtup9 a b c d e f g h i -> (4, maximum [go a, go b, go c, go d, go e, go f, go g, go h, go i])
   --
   liftIO $ do
     out <- allocateArray $ shape arr
