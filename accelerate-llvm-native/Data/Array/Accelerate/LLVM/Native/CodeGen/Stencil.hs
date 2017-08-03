@@ -90,21 +90,21 @@ gangParam2DSides =
   let t            = scalarType
       start        = "ix.start"
       end          = "ix.end"
-      offsetWidth  = "ix.maxBorderOffsetWidth"
-      offsetHeight = "ix.maxBorderOffsetHeight"
+      borderWidth  = "ix.borderWidth"
+      borderHeight = "ix.borderHeight"
       width        = "ix.width"
       height       = "ix.height"
   in
     ( local t start
     , local t end
-    , local t offsetWidth
-    , local t offsetHeight
+    , local t borderWidth
+    , local t borderHeight
     , local t width
     , local t height
     , [ scalarParameter t start
       , scalarParameter t end
-      , scalarParameter t offsetWidth
-      , scalarParameter t offsetHeight
+      , scalarParameter t borderWidth
+      , scalarParameter t borderHeight
       , scalarParameter t width
       , scalarParameter t height
       ]
@@ -218,12 +218,12 @@ mkStencil2DLeftRight
     -> CodeGen (IROpenAcc Native aenv (Array DIM2 b))
 mkStencil2DLeftRight _ aenv f boundary ir@(IRManifest v) =
   let
-      (start, end, maxBorderOffsetWidth, _, width, _, paramGang) = gangParam2DSides
+      (start, end, borderWidth, _borderHeight, width, _height, paramGang) = gangParam2DSides
       (arrOut, paramOut) = mutableArray ("out" :: Name (Array DIM2 b))
       paramEnv           = envParam aenv
   in
   makeOpenAcc "stencil2DLeftRight" (paramGang ++ paramOut ++ paramEnv) $ do
-    imapFromTo (int 0) maxBorderOffsetWidth $ \x -> do
+    imapFromTo (int 0) borderWidth $ \x -> do
       rightx <- sub numType width =<< add numType (int 1) x
       imapFromTo start end $ \y -> do
         -- Left
@@ -245,12 +245,12 @@ mkStencil2DTopBottom
     -> CodeGen (IROpenAcc Native aenv (Array DIM2 b))
 mkStencil2DTopBottom _ aenv f boundary ir@(IRManifest v) =
   let
-      (start, end, _, maxBorderOffsetHeight, _, height, paramGang) = gangParam2DSides
+      (start, end, _borderWidth, borderHeight, _width, height, paramGang) = gangParam2DSides
       (arrOut, paramOut) = mutableArray ("out" :: Name (Array DIM2 b))
       paramEnv           = envParam aenv
   in
   makeOpenAcc "stencil2DTopBottom" (paramGang ++ paramOut ++ paramEnv) $ do
-    imapFromTo (int 0) maxBorderOffsetHeight $ \y -> do
+    imapFromTo (int 0) borderHeight $ \y -> do
       bottomy <- sub numType height =<< add numType (int 1) y
       imapFromTo start end $ \x -> do
         -- Top
