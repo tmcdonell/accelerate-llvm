@@ -437,6 +437,24 @@ permuteOp exe gamma aenv () inplace shIn dfs = withExecutable exe $ \nativeExecu
   return out
 
 
+stencil2DSize :: StencilR DIM2 e2 s2 -> (Int, Int)
+stencil2DSize stencilR =
+  let
+      go :: StencilR DIM1 e1 s1 -> Int
+      go StencilRunit3 = 1
+      go StencilRunit5 = 2
+      go StencilRunit7 = 3
+      go StencilRunit9 = 4
+      go _             = $internalError "stencil1Op" "expected 2D stencil"
+  in
+  case stencilR of
+    StencilRtup3 a b c             -> (1, maximum [go a, go b, go c])
+    StencilRtup5 a b c d e         -> (2, maximum [go a, go b, go c, go d, go e])
+    StencilRtup7 a b c d e f g     -> (3, maximum [go a, go b, go c, go d, go e, go f, go g])
+    StencilRtup9 a b c d e f g h i -> (4, maximum [go a, go b, go c, go d, go e, go f, go g, go h, go i])
+
+
+
 stencil1Op
     :: forall aenv stencil sh a b. (Shape sh, Elt a, Elt b)
     => StencilR sh a stencil
@@ -477,20 +495,7 @@ stencil12DOp stencilR exe gamma aenv () arr = withExecutable exe $ \nativeExecut
   Native{..} <- gets llvmTarget
   let
       Z :. height :. width        = shape arr
-      (borderHeight, borderWidth) =
-        let
-            go :: StencilR DIM1 e s -> Int
-            go StencilRunit3 = 1
-            go StencilRunit5 = 2
-            go StencilRunit7 = 3
-            go StencilRunit9 = 4
-            go _             = $internalError "stencil1Op" "expected 2D stencil"
-        in
-        case stencilR of
-          StencilRtup3 a b c             -> (1, maximum [go a, go b, go c])
-          StencilRtup5 a b c d e         -> (2, maximum [go a, go b, go c, go d, go e])
-          StencilRtup7 a b c d e f g     -> (3, maximum [go a, go b, go c, go d, go e, go f, go g])
-          StencilRtup9 a b c d e f g h i -> (4, maximum [go a, go b, go c, go d, go e, go f, go g, go h, go i])
+      (borderWidth, borderHeight) = stencil2DSize stencilR
   --
   liftIO $ do
     out <- allocateArray $ shape arr
