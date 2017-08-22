@@ -575,13 +575,13 @@ stencil22DOp stencilR1 stencilR2 exe gamma aenv () arr brr =
       let rowsPerRun   = 1 `max` (height `quot` (gangSize * 10))
 
       -- Core stencil region, without boundary checks
-      executeOp rowsPerRun fillP (nativeExecutable !# "stencil2DMiddle") gamma aenv (IE borderHeight (height - borderHeight)) middleParams
+      executeOp rowsPerRun fillP (nativeExecutable !# "stencil22DMiddle") gamma aenv (IE borderHeight (height - borderHeight)) middleParams
 
       -- Exclude the corners from these sides
-      executeOp 1 fillS (nativeExecutable !# "stencil2DLeftRight") gamma aenv (IE borderHeight (height - borderHeight)) sidesParams
+      executeOp 1 fillS (nativeExecutable !# "stencil22DLeftRight") gamma aenv (IE borderHeight (height - borderHeight)) sidesParams
 
       -- Include the corners in these sides
-      executeOp 1 fillS (nativeExecutable !# "stencil2DTopBottom") gamma aenv (IE 0 width) sidesParams
+      executeOp 1 fillS (nativeExecutable !# "stencil22DTopBottom") gamma aenv (IE 0 width) sidesParams
 
       return out
 

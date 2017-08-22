@@ -77,10 +77,12 @@ mkStencil2
     -> CodeGen (IROpenAcc Native aenv (Array sh c))
 mkStencil2
   | Just Refl <- matchShapeType (undefined :: DIM2) (undefined :: sh)
-  = undefined -- mkStencil22D
+  = mkStencil22D
 
   | otherwise
   = defaultStencil2
+
+
 
 gangParam2D :: (IR Int, IR Int, IR Int, IR Int, [LLVM.Parameter])
 gangParam2D =
@@ -151,6 +153,28 @@ stencilElement mBoundary aenv f (IRManifest v) arrOut x y = do
   writeArray arrOut i r
 
 
+stencilElement2
+    :: forall aenv stencil1 stencil2 a b c.
+       (Stencil DIM2 a stencil1, Stencil DIM2 b stencil2, Elt c, Skeleton Native)
+    => Maybe (Boundary (IR a))
+    -> Maybe (Boundary (IR b))
+    -> Gamma aenv
+    -> IRFun2 Native aenv (stencil1 -> stencil2 -> c)
+    -> IRManifest Native aenv (Array DIM2 a)
+    -> IRManifest Native aenv (Array DIM2 b)
+    -> IRArray (Array DIM2 c)
+    -> IR Int
+    -> IR Int
+    -> CodeGen ()
+stencilElement2 mB1 mB2 aenv f (IRManifest v1) (IRManifest v2) arrOut x y = do
+  let ix = index2D x y
+  i     <- intOfIndex (irArrayShape arrOut) ix
+  sten1 <- stencilAccess mB1 (irArray (aprj v1 aenv)) ix
+  sten2 <- stencilAccess mB2 (irArray (aprj v2 aenv)) ix
+  r     <- app2 f sten1 sten2
+  writeArray arrOut i r
+
+
 middleElement, boundaryElement
     :: forall aenv stencil a b. (Stencil DIM2 a stencil, Elt b, Skeleton Native)
     => Boundary (IR a)
@@ -165,6 +189,23 @@ middleElement   _        = stencilElement  Nothing
 boundaryElement boundary = stencilElement (Just boundary)
 
 
+middleElement2, boundaryElement2
+    :: forall aenv stencil1 stencil2 a b c.
+       (Stencil DIM2 a stencil1, Stencil DIM2 b stencil2, Elt c, Skeleton Native)
+    => Boundary (IR a)
+    -> Boundary (IR b)
+    -> Gamma aenv
+    -> IRFun2 Native aenv (stencil1 -> stencil2 -> c)
+    -> IRManifest Native aenv (Array DIM2 a)
+    -> IRManifest Native aenv (Array DIM2 b)
+    -> IRArray (Array DIM2 c)
+    -> IR Int
+    -> IR Int
+    -> CodeGen ()
+middleElement2   _  _  = stencilElement2  Nothing   Nothing
+boundaryElement2 b1 b2 = stencilElement2 (Just b1) (Just b2)
+
+
 mkStencil2D
     :: forall aenv stencil a b. (Stencil DIM2 a stencil, Elt b, Skeleton Native)
     => Native
@@ -177,6 +218,24 @@ mkStencil2D n aenv f boundary ir =
   foldr1 (+++) <$> sequence [ mkStencil2DLeftRight n aenv f boundary ir
                             , mkStencil2DTopBottom n aenv f boundary ir
                             , mkStencil2DMiddle    n aenv f boundary ir
+                            ]
+
+
+mkStencil22D
+    :: forall aenv stencil1 stencil2 a b c.
+       (Stencil DIM2 a stencil1, Stencil DIM2 b stencil2, Elt c, Skeleton Native)
+    => Native
+    -> Gamma aenv
+    -> IRFun2 Native aenv (stencil1 -> stencil2 -> c)
+    -> Boundary (IR a)
+    -> IRManifest Native aenv (Array DIM2 a)
+    -> Boundary (IR b)
+    -> IRManifest Native aenv (Array DIM2 b)
+    -> CodeGen (IROpenAcc Native aenv (Array DIM2 c))
+mkStencil22D n aenv f b1 ir1 b2 ir2 =
+  foldr1 (+++) <$> sequence [ mkStencil22DLeftRight n aenv f b1 ir1 b2 ir2
+                            , mkStencil22DTopBottom n aenv f b1 ir1 b2 ir2
+                            , mkStencil22DMiddle    n aenv f b1 ir1 b2 ir2
                             ]
 
 
@@ -275,5 +334,114 @@ mkStencil2DTopBottom _ aenv f boundary ir@(IRManifest v) =
         boundaryElement boundary aenv f ir arrOut x y
         -- Bottom
         boundaryElement boundary aenv f ir arrOut x bottomy
+
+    return_
+
+
+
+mkStencil22DMiddle
+    :: forall aenv stencil1 stencil2 a b c.
+       (Stencil DIM2 a stencil1, Stencil DIM2 b stencil2, Elt c, Skeleton Native)
+    => Native
+    -> Gamma aenv
+    -> IRFun2 Native aenv (stencil1 -> stencil2 -> c)
+    -> Boundary (IR a)
+    -> IRManifest Native aenv (Array DIM2 a)
+    -> Boundary (IR b)
+    -> IRManifest Native aenv (Array DIM2 b)
+    -> CodeGen (IROpenAcc Native aenv (Array DIM2 c))
+mkStencil22DMiddle _ aenv f b1 ir1@(IRManifest v1) b2 ir2@(IRManifest v2) =
+  let
+      (y0,y1,x0,x1, paramGang) = gangParam2D
+      (arrOut, paramOut)       = mutableArray ("out" :: Name (Array DIM2 c))
+      paramEnv                 = envParam aenv
+  in
+  makeOpenAcc "stencil22DMiddle" (paramGang ++ paramOut ++ paramEnv) $ do
+    yend <- sub numType y1 (int 3)
+    imapFromStepTo y0 (int 4) yend $ \y -> do
+      y_1 <- add numType y (int 1)
+      y_2 <- add numType y (int 2)
+      y_3 <- add numType y (int 3)
+      imapFromTo x0 x1 $ \x -> do
+        let ix = index2D x y
+        i0 <- intOfIndex (irArrayShape arrOut) ix
+        i1 <- intOfIndex (irArrayShape arrOut) (index2D x y_1)
+        i2 <- intOfIndex (irArrayShape arrOut) (index2D x y_2)
+        i3 <- intOfIndex (irArrayShape arrOut) (index2D x y_3)
+        (s10, s11, s12, s13) <- stencilAccesses Nothing (irArray (aprj v1 aenv)) ix
+        (s20, s21, s22, s23) <- stencilAccesses Nothing (irArray (aprj v2 aenv)) ix
+        r0 <- app2 f s10 s20
+        r1 <- app2 f s11 s21
+        r2 <- app2 f s12 s22
+        r3 <- app2 f s13 s23
+        writeArray arrOut i0 r0
+        writeArray arrOut i1 r1
+        writeArray arrOut i2 r2
+        writeArray arrOut i3 r3
+    -- Do the last few rows that aren't in the groups of 4.
+    yrange    <- sub numType y1 y0
+    remainder <- A.rem integralType yrange (int 4)
+    starty    <- sub numType y1 remainder
+    imapFromTo starty y1 $ \y ->
+      imapFromTo x0 x1 $ \x ->
+        middleElement2 b1 b2 aenv f ir1 ir2 arrOut x y
+
+    return_
+
+
+mkStencil22DLeftRight
+    :: forall aenv stencil1 stencil2 a b c.
+       (Stencil DIM2 a stencil1, Stencil DIM2 b stencil2, Elt c, Skeleton Native)
+    => Native
+    -> Gamma aenv
+    -> IRFun2 Native aenv (stencil1 -> stencil2 -> c)
+    -> Boundary (IR a)
+    -> IRManifest Native aenv (Array DIM2 a)
+    -> Boundary (IR b)
+    -> IRManifest Native aenv (Array DIM2 b)
+    -> CodeGen (IROpenAcc Native aenv (Array DIM2 c))
+mkStencil22DLeftRight _ aenv f b1 ir1@(IRManifest v1) b2 ir2@(IRManifest v2) =
+  let
+      (start, end, borderWidth, _borderHeight, width, _height, paramGang) = gangParam2DSides
+      (arrOut, paramOut) = mutableArray ("out" :: Name (Array DIM2 c))
+      paramEnv           = envParam aenv
+  in
+  makeOpenAcc "stencil22DLeftRight" (paramGang ++ paramOut ++ paramEnv) $ do
+    imapFromTo (int 0) borderWidth $ \x -> do
+      rightx <- sub numType width =<< add numType (int 1) x
+      imapFromTo start end $ \y -> do
+        -- Left
+        boundaryElement2 b1 b2 aenv f ir1 ir2 arrOut x y
+        -- Right
+        boundaryElement2 b1 b2 aenv f ir1 ir2 arrOut rightx y
+
+    return_
+
+
+mkStencil22DTopBottom
+    :: forall aenv stencil1 stencil2 a b c.
+       (Stencil DIM2 a stencil1, Stencil DIM2 b stencil2, Elt c, Skeleton Native)
+    => Native
+    -> Gamma aenv
+    -> IRFun2 Native aenv (stencil1 -> stencil2 -> c)
+    -> Boundary (IR a)
+    -> IRManifest Native aenv (Array DIM2 a)
+    -> Boundary (IR b)
+    -> IRManifest Native aenv (Array DIM2 b)
+    -> CodeGen (IROpenAcc Native aenv (Array DIM2 c))
+mkStencil22DTopBottom _ aenv f b1 ir1@(IRManifest v1) b2 ir2@(IRManifest v2) =
+  let
+      (start, end, _borderWidth, borderHeight, _width, height, paramGang) = gangParam2DSides
+      (arrOut, paramOut) = mutableArray ("out" :: Name (Array DIM2 c))
+      paramEnv           = envParam aenv
+  in
+  makeOpenAcc "stencil22DTopBottom" (paramGang ++ paramOut ++ paramEnv) $ do
+    imapFromTo (int 0) borderHeight $ \y -> do
+      bottomy <- sub numType height =<< add numType (int 1) y
+      imapFromTo start end $ \x -> do
+        -- Top
+        boundaryElement2 b1 b2 aenv f ir1 ir2 arrOut x y
+        -- Bottom
+        boundaryElement2 b1 b2 aenv f ir1 ir2 arrOut x bottomy
 
     return_
