@@ -511,7 +511,7 @@ stencil12DOp stencilR exe gamma aenv () arr = withExecutable exe $ \nativeExecut
 
 
 stencil2Op
-    :: (Shape sh, Elt c)
+    :: forall aenv stencil1 stencil2 sh a b c. (Shape sh, Elt a, Elt b, Elt c)
     => StencilR sh a stencil1
     -> StencilR sh b stencil2
     -> ExecutableR Native
@@ -521,9 +521,40 @@ stencil2Op
     -> Array sh a
     -> Array sh b
     -> LLVM Native (Array sh c)
-stencil2Op _ _ kernel gamma aenv stream arr brr =
+stencil2Op s1 s2
+  | Just Refl <- matchShapeType (undefined :: DIM2) (undefined :: sh)
+  = stencil22DOp s1 s2
+  --
+  | otherwise
+  = stencil2AllOp
+
+
+stencil2AllOp
+    :: forall aenv sh a b c. (Shape sh, Elt c)
+    => ExecutableR Native
+    -> Gamma aenv
+    -> Aval aenv
+    -> Stream
+    -> Array sh a
+    -> Array sh b
+    -> LLVM Native (Array sh c)
+stencil2AllOp kernel gamma aenv stream arr brr =
   simpleOp kernel gamma aenv stream (shape arr `intersect` shape brr)
 
+
+stencil22DOp
+    :: forall aenv stencil1 stencil2 sh a b c. (Shape sh, Elt a, Elt b, Elt c)
+    => StencilR sh a stencil1
+    -> StencilR sh b stencil2
+    -> ExecutableR Native
+    -> Gamma aenv
+    -> Aval aenv
+    -> Stream
+    -> Array sh a
+    -> Array sh b
+    -> LLVM Native (Array sh c)
+stencil22DOp s1 s2 kernel gamma aenv stream arr brr =
+  undefined
 
 -- Skeleton execution
 -- ------------------
