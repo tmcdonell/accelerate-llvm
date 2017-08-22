@@ -64,6 +64,24 @@ mkStencil
   = defaultStencil1
 
 
+mkStencil2
+    :: forall aenv stencil1 stencil2 a b c sh.
+       (Stencil sh a stencil1, Stencil sh b stencil2, Elt c, Skeleton Native)
+    => Native
+    -> Gamma aenv
+    -> IRFun2 Native aenv (stencil1 -> stencil2 -> c)
+    -> Boundary (IR a)
+    -> IRManifest Native aenv (Array sh a)
+    -> Boundary (IR b)
+    -> IRManifest Native aenv (Array sh b)
+    -> CodeGen (IROpenAcc Native aenv (Array sh c))
+mkStencil2
+  | Just Refl <- matchShapeType (undefined :: DIM2) (undefined :: sh)
+  = undefined -- mkStencil22D
+
+  | otherwise
+  = defaultStencil2
+
 gangParam2D :: (IR Int, IR Int, IR Int, IR Int, [LLVM.Parameter])
 gangParam2D =
   let t      = scalarType

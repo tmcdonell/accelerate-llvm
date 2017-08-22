@@ -45,4 +45,5 @@ instance Skeleton Native where
   scanr' _      = mkScanr'
   permute _     = mkPermute
   stencil       = mkStencil
+  stencil2      = mkStencil2
 

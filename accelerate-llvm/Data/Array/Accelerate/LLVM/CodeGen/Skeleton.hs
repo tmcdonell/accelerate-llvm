@@ -16,7 +16,7 @@
 module Data.Array.Accelerate.LLVM.CodeGen.Skeleton (
 
   Skeleton(..),
-  defaultStencil1,
+  defaultStencil1, defaultStencil2
 
 ) where
 
