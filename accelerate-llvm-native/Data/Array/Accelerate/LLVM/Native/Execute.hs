@@ -548,18 +548,43 @@ stencil2AllOp kernel gamma aenv stream arr brr =
 
 
 stencil22DOp
-    :: forall aenv stencil1 stencil2 sh a b c. (Shape sh, Elt a, Elt b, Elt c)
-    => StencilR sh a stencil1
-    -> StencilR sh b stencil2
+    :: forall aenv stencil1 stencil2 a b c. Elt c
+    => StencilR DIM2 a stencil1
+    -> StencilR DIM2 b stencil2
     -> ExecutableR Native
     -> Gamma aenv
     -> Aval aenv
     -> Stream
-    -> Array sh a
-    -> Array sh b
-    -> LLVM Native (Array sh c)
-stencil22DOp s1 s2 kernel gamma aenv stream arr brr =
-  undefined
+    -> Array DIM2 a
+    -> Array DIM2 b
+    -> LLVM Native (Array DIM2 c)
+stencil22DOp stencilR1 stencilR2 exe gamma aenv () arr brr =
+  withExecutable exe $ \nativeExecutable -> do
+    Native{..} <- gets llvmTarget
+    let
+        outShape                    = shape arr `intersect` shape brr
+        Z :. height :. width        = outShape
+        (w1         , h1          ) = stencil2DSize stencilR1
+        (w2         , h2          ) = stencil2DSize stencilR2
+        (borderWidth, borderHeight) = (max w1 w2, max h1 h2)
+    --
+    liftIO $ do
+      out <- allocateArray outShape
+      let sidesParams  = (borderWidth, borderHeight, width, height, out)
+      let middleParams = (borderWidth, width - borderWidth, out)
+      let rowsPerRun   = 1 `max` (height `quot` (gangSize * 10))
+
+      -- Core stencil region, without boundary checks
+      executeOp rowsPerRun fillP (nativeExecutable !# "stencil2DMiddle") gamma aenv (IE borderHeight (height - borderHeight)) middleParams
+
+      -- Exclude the corners from these sides
+      executeOp 1 fillS (nativeExecutable !# "stencil2DLeftRight") gamma aenv (IE borderHeight (height - borderHeight)) sidesParams
+
+      -- Include the corners in these sides
+      executeOp 1 fillS (nativeExecutable !# "stencil2DTopBottom") gamma aenv (IE 0 width) sidesParams
+
+      return out
+
 
 -- Skeleton execution
 -- ------------------
