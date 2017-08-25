@@ -254,8 +254,11 @@ mkStencil2DMiddle _ aenv f boundary ir@(IRManifest v) =
       paramEnv                 = envParam aenv
   in
   makeOpenAcc "stencil2DMiddle" (paramGang ++ paramOut ++ paramEnv) $ do
-    yend <- sub numType y1 (int 3)
-    imapFromStepTo y0 (int 4) yend $ \y -> do
+    yrange    <- sub numType y1 y0
+    remainder <- A.rem integralType yrange (int 4)
+    y'        <- sub numType y1 remainder
+    --
+    imapFromStepTo y0 (int 4) y' $ \y -> do
       y_1 <- add numType y (int 1)
       y_2 <- add numType y (int 2)
       y_3 <- add numType y (int 3)
@@ -275,10 +278,7 @@ mkStencil2DMiddle _ aenv f boundary ir@(IRManifest v) =
         writeArray arrOut i2 r2
         writeArray arrOut i3 r3
     -- Do the last few rows that aren't in the groups of 4.
-    yrange    <- sub numType y1 y0
-    remainder <- A.rem integralType yrange (int 4)
-    starty    <- sub numType y1 remainder
-    imapFromTo starty y1 $ \y ->
+    imapFromTo y' y1 $ \y ->
       imapFromTo x0 x1 $ \x ->
         middleElement boundary aenv f ir arrOut x y
 
@@ -357,8 +357,11 @@ mkStencil22DMiddle _ aenv f b1 ir1@(IRManifest v1) b2 ir2@(IRManifest v2) =
       paramEnv                 = envParam aenv
   in
   makeOpenAcc "stencil22DMiddle" (paramGang ++ paramOut ++ paramEnv) $ do
-    yend <- sub numType y1 (int 3)
-    imapFromStepTo y0 (int 4) yend $ \y -> do
+    yrange    <- sub numType y1 y0
+    remainder <- A.rem integralType yrange (int 4)
+    y'        <- sub numType y1 remainder
+    --
+    imapFromStepTo y0 (int 4) y' $ \y -> do
       y_1 <- add numType y (int 1)
       y_2 <- add numType y (int 2)
       y_3 <- add numType y (int 3)
@@ -379,10 +382,7 @@ mkStencil22DMiddle _ aenv f b1 ir1@(IRManifest v1) b2 ir2@(IRManifest v2) =
         writeArray arrOut i2 r2
         writeArray arrOut i3 r3
     -- Do the last few rows that aren't in the groups of 4.
-    yrange    <- sub numType y1 y0
-    remainder <- A.rem integralType yrange (int 4)
-    starty    <- sub numType y1 remainder
-    imapFromTo starty y1 $ \y ->
+    imapFromTo y' y1 $ \y ->
       imapFromTo x0 x1 $ \x ->
         middleElement2 b1 b2 aenv f ir1 ir2 arrOut x y
 
