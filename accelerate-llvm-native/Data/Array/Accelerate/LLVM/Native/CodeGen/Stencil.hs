@@ -209,10 +209,10 @@ mkStencil2D
     -> Boundary (IR a)
     -> IRManifest Native aenv (Array DIM2 a)
     -> CodeGen (IROpenAcc Native aenv (Array DIM2 b))
-mkStencil2D n aenv f boundary ir =
-  foldr1 (+++) <$> sequence [ mkStencil2DLeftRight n aenv f boundary ir
-                            , mkStencil2DTopBottom n aenv f boundary ir
-                            , mkStencil2DMiddle    n aenv f boundary ir
+mkStencil2D n aenv f boundary ir1 =
+  foldr1 (+++) <$> sequence [ mkStencil2DLeftRight n aenv f boundary ir1
+                            , mkStencil2DTopBottom n aenv f boundary ir1
+                            , mkStencil2DMiddle    n aenv f boundary ir1
                             ]
 
 
@@ -242,7 +242,7 @@ mkStencil2DMiddle
     -> Boundary (IR a)
     -> IRManifest Native aenv (Array DIM2 a)
     -> CodeGen (IROpenAcc Native aenv (Array DIM2 b))
-mkStencil2DMiddle _ aenv f boundary ir@(IRManifest v) =
+mkStencil2DMiddle _ aenv f boundary ir1@(IRManifest v) =
   let
       (y0,y1,x0,x1, paramGang) = gangParam2D
       (arrOut, paramOut)       = mutableArray ("out" :: Name (Array DIM2 b))
@@ -275,7 +275,7 @@ mkStencil2DMiddle _ aenv f boundary ir@(IRManifest v) =
     -- Do the last few rows that aren't in the groups of 4.
     imapFromTo y' y1 $ \y ->
       imapFromTo x0 x1 $ \x ->
-        middleElement boundary aenv f ir arrOut x y
+        middleElement boundary aenv f ir1 arrOut x y
 
     return_
 
@@ -288,7 +288,7 @@ mkStencil2DLeftRight
     -> Boundary (IR a)
     -> IRManifest Native aenv (Array DIM2 a)
     -> CodeGen (IROpenAcc Native aenv (Array DIM2 b))
-mkStencil2DLeftRight _ aenv f boundary ir@(IRManifest v) =
+mkStencil2DLeftRight _ aenv f boundary ir1 =
   let
       (start, end, borderWidth, _borderHeight, width, _height, paramGang) = gangParam2DSides
       (arrOut, paramOut) = mutableArray ("out" :: Name (Array DIM2 b))
@@ -299,9 +299,9 @@ mkStencil2DLeftRight _ aenv f boundary ir@(IRManifest v) =
       rightx <- sub numType width =<< add numType (int 1) x
       imapFromTo start end $ \y -> do
         -- Left
-        boundaryElement boundary aenv f ir arrOut x y
+        boundaryElement boundary aenv f ir1 arrOut x y
         -- Right
-        boundaryElement boundary aenv f ir arrOut rightx y
+        boundaryElement boundary aenv f ir1 arrOut rightx y
 
     return_
 
@@ -315,7 +315,7 @@ mkStencil2DTopBottom
     -> Boundary (IR a)
     -> IRManifest Native aenv (Array DIM2 a)
     -> CodeGen (IROpenAcc Native aenv (Array DIM2 b))
-mkStencil2DTopBottom _ aenv f boundary ir@(IRManifest v) =
+mkStencil2DTopBottom _ aenv f boundary ir1 =
   let
       (start, end, _borderWidth, borderHeight, _width, height, paramGang) = gangParam2DSides
       (arrOut, paramOut) = mutableArray ("out" :: Name (Array DIM2 b))
@@ -326,9 +326,9 @@ mkStencil2DTopBottom _ aenv f boundary ir@(IRManifest v) =
       bottomy <- sub numType height =<< add numType (int 1) y
       imapFromTo start end $ \x -> do
         -- Top
-        boundaryElement boundary aenv f ir arrOut x y
+        boundaryElement boundary aenv f ir1 arrOut x y
         -- Bottom
-        boundaryElement boundary aenv f ir arrOut x bottomy
+        boundaryElement boundary aenv f ir1 arrOut x bottomy
 
     return_
 
@@ -395,7 +395,7 @@ mkStencil22DLeftRight
     -> Boundary (IR b)
     -> IRManifest Native aenv (Array DIM2 b)
     -> CodeGen (IROpenAcc Native aenv (Array DIM2 c))
-mkStencil22DLeftRight _ aenv f b1 ir1@(IRManifest v1) b2 ir2@(IRManifest v2) =
+mkStencil22DLeftRight _ aenv f b1 ir1 b2 ir2 =
   let
       (start, end, borderWidth, _borderHeight, width, _height, paramGang) = gangParam2DSides
       (arrOut, paramOut) = mutableArray ("out" :: Name (Array DIM2 c))
@@ -424,7 +424,7 @@ mkStencil22DTopBottom
     -> Boundary (IR b)
     -> IRManifest Native aenv (Array DIM2 b)
     -> CodeGen (IROpenAcc Native aenv (Array DIM2 c))
-mkStencil22DTopBottom _ aenv f b1 ir1@(IRManifest v1) b2 ir2@(IRManifest v2) =
+mkStencil22DTopBottom _ aenv f b1 ir1 b2 ir2 =
   let
       (start, end, _borderWidth, borderHeight, _width, height, paramGang) = gangParam2DSides
       (arrOut, paramOut) = mutableArray ("out" :: Name (Array DIM2 c))
