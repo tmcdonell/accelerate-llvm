@@ -19,10 +19,8 @@ module Data.Array.Accelerate.LLVM.Native.CodeGen.Stencil
 -- accelerate
 import Data.Array.Accelerate.AST                                    hiding (stencilAccess)
 import Data.Array.Accelerate.Analysis.Match
-import Data.Array.Accelerate.Analysis.Stencil
-import Data.Array.Accelerate.Array.Sugar                            ( Array, DIM2, Shape, Elt, Z(..), (:.)(..) )
+import Data.Array.Accelerate.Array.Sugar                            ( Array, DIM2, Elt )
 import Data.Array.Accelerate.Type
-import Data.Array.Accelerate.Error
 
 import Data.Array.Accelerate.LLVM.Analysis.Match
 import Data.Array.Accelerate.LLVM.CodeGen.Arithmetic                as A
@@ -38,14 +36,11 @@ import Data.Array.Accelerate.LLVM.CodeGen.Sugar
 
 import Data.Array.Accelerate.LLVM.Native.Target                     ( Native )
 import Data.Array.Accelerate.LLVM.Native.CodeGen.Base
-import Data.Array.Accelerate.LLVM.Native.CodeGen.Generate
 import Data.Array.Accelerate.LLVM.Native.CodeGen.Loop
 
 import Data.Array.Accelerate.LLVM.CodeGen.Skeleton
 
 import qualified LLVM.AST.Global                                    as LLVM
-
-import Control.Applicative
 
 
 mkStencil
