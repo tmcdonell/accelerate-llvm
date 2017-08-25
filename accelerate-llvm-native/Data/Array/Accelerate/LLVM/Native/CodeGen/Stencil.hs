@@ -170,37 +170,6 @@ stencilElement2 mB1 mB2 aenv f (IRManifest v1) (IRManifest v2) arrOut x y = do
   writeArray arrOut i r
 
 
-middleElement, boundaryElement
-    :: forall aenv stencil a b. (Stencil DIM2 a stencil, Elt b, Skeleton Native)
-    => Boundary (IR a)
-    -> Gamma aenv
-    -> IRFun1 Native aenv (stencil -> b)
-    -> IRManifest Native aenv (Array DIM2 a)
-    -> IRArray (Array DIM2 b)
-    -> IR Int
-    -> IR Int
-    -> CodeGen ()
-middleElement   _        = stencilElement  Nothing
-boundaryElement boundary = stencilElement (Just boundary)
-
-
-middleElement2, boundaryElement2
-    :: forall aenv stencil1 stencil2 a b c.
-       (Stencil DIM2 a stencil1, Stencil DIM2 b stencil2, Elt c, Skeleton Native)
-    => Boundary (IR a)
-    -> Boundary (IR b)
-    -> Gamma aenv
-    -> IRFun2 Native aenv (stencil1 -> stencil2 -> c)
-    -> IRManifest Native aenv (Array DIM2 a)
-    -> IRManifest Native aenv (Array DIM2 b)
-    -> IRArray (Array DIM2 c)
-    -> IR Int
-    -> IR Int
-    -> CodeGen ()
-middleElement2   _  _  = stencilElement2  Nothing   Nothing
-boundaryElement2 b1 b2 = stencilElement2 (Just b1) (Just b2)
-
-
 mkStencil2D
     :: forall aenv stencil a b. (Stencil DIM2 a stencil, Elt b, Skeleton Native)
     => Native
@@ -275,7 +244,7 @@ mkStencil2DMiddle _ aenv f boundary ir1@(IRManifest v) =
     -- Do the last few rows that aren't in the groups of 4.
     imapFromTo y' y1 $ \y ->
       imapFromTo x0 x1 $ \x ->
-        middleElement boundary aenv f ir1 arrOut x y
+        stencilElement Nothing aenv f ir1 arrOut x y
 
     return_
 
@@ -299,9 +268,9 @@ mkStencil2DLeftRight _ aenv f boundary ir1 =
       rightx <- sub numType width =<< add numType (int 1) x
       imapFromTo start end $ \y -> do
         -- Left
-        boundaryElement boundary aenv f ir1 arrOut x y
+        stencilElement (Just boundary) aenv f ir1 arrOut x y
         -- Right
-        boundaryElement boundary aenv f ir1 arrOut rightx y
+        stencilElement (Just boundary) aenv f ir1 arrOut rightx y
 
     return_
 
@@ -326,9 +295,9 @@ mkStencil2DTopBottom _ aenv f boundary ir1 =
       bottomy <- sub numType height =<< add numType (int 1) y
       imapFromTo start end $ \x -> do
         -- Top
-        boundaryElement boundary aenv f ir1 arrOut x y
+        stencilElement (Just boundary) aenv f ir1 arrOut x y
         -- Bottom
-        boundaryElement boundary aenv f ir1 arrOut x bottomy
+        stencilElement (Just boundary) aenv f ir1 arrOut x bottomy
 
     return_
 
@@ -379,7 +348,7 @@ mkStencil22DMiddle _ aenv f b1 ir1@(IRManifest v1) b2 ir2@(IRManifest v2) =
     -- Do the last few rows that aren't in the groups of 4.
     imapFromTo y' y1 $ \y ->
       imapFromTo x0 x1 $ \x ->
-        middleElement2 b1 b2 aenv f ir1 ir2 arrOut x y
+        stencilElement2 Nothing Nothing aenv f ir1 ir2 arrOut x y
 
     return_
 
@@ -406,9 +375,9 @@ mkStencil22DLeftRight _ aenv f b1 ir1 b2 ir2 =
       rightx <- sub numType width =<< add numType (int 1) x
       imapFromTo start end $ \y -> do
         -- Left
-        boundaryElement2 b1 b2 aenv f ir1 ir2 arrOut x y
+        stencilElement2 (Just b1) (Just b2) aenv f ir1 ir2 arrOut x y
         -- Right
-        boundaryElement2 b1 b2 aenv f ir1 ir2 arrOut rightx y
+        stencilElement2 (Just b1) (Just b2) aenv f ir1 ir2 arrOut rightx y
 
     return_
 
@@ -435,8 +404,8 @@ mkStencil22DTopBottom _ aenv f b1 ir1 b2 ir2 =
       bottomy <- sub numType height =<< add numType (int 1) y
       imapFromTo start end $ \x -> do
         -- Top
-        boundaryElement2 b1 b2 aenv f ir1 ir2 arrOut x y
+        stencilElement2 (Just b1) (Just b2) aenv f ir1 ir2 arrOut x y
         -- Bottom
-        boundaryElement2 b1 b2 aenv f ir1 ir2 arrOut x bottomy
+        stencilElement2 (Just b1) (Just b2) aenv f ir1 ir2 arrOut x bottomy
 
     return_
