@@ -57,7 +57,6 @@ mkStencil n aenv f b1 ir1
                               , mkStencil2DTopBottom n aenv f b1 ir1
                               , mkStencil2DMiddle    n aenv f b1 ir1
                               ]
-
   | otherwise
   = defaultStencil1 n aenv f b1 ir1
 
