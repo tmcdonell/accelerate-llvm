@@ -131,7 +131,7 @@ index2D (IR x) (IR y) = IR (OP_Pair (OP_Pair OP_Unit y) x)
 
 
 stencilElement
-    :: forall aenv stencil a b. (Stencil DIM2 a stencil, Elt b, Skeleton Native)
+    :: forall aenv stencil a b. (Stencil DIM2 a stencil, Elt b)
     => Maybe (Boundary (IR a))
     -> Gamma aenv
     -> IRFun1 Native aenv (stencil -> b)
@@ -150,7 +150,7 @@ stencilElement mBoundary aenv f (IRManifest v) arrOut x y = do
 
 stencilElement2
     :: forall aenv stencil1 stencil2 a b c.
-       (Stencil DIM2 a stencil1, Stencil DIM2 b stencil2, Elt c, Skeleton Native)
+       (Stencil DIM2 a stencil1, Stencil DIM2 b stencil2, Elt c)
     => Maybe (Boundary (IR a))
     -> Maybe (Boundary (IR b))
     -> Gamma aenv
@@ -171,7 +171,7 @@ stencilElement2 mB1 mB2 aenv f (IRManifest v1) (IRManifest v2) arrOut x y = do
 
 
 mkStencil2D
-    :: forall aenv stencil a b. (Stencil DIM2 a stencil, Elt b, Skeleton Native)
+    :: forall aenv stencil a b. (Stencil DIM2 a stencil, Elt b)
     => Native
     -> Gamma aenv
     -> IRFun1 Native aenv (stencil -> b)
@@ -187,7 +187,7 @@ mkStencil2D n aenv f boundary ir1 =
 
 mkStencil22D
     :: forall aenv stencil1 stencil2 a b c.
-       (Stencil DIM2 a stencil1, Stencil DIM2 b stencil2, Elt c, Skeleton Native)
+       (Stencil DIM2 a stencil1, Stencil DIM2 b stencil2, Elt c)
     => Native
     -> Gamma aenv
     -> IRFun2 Native aenv (stencil1 -> stencil2 -> c)
@@ -204,7 +204,7 @@ mkStencil22D n aenv f b1 ir1 b2 ir2 =
 
 
 mkStencil2DMiddle
-    :: forall aenv stencil a b. (Stencil DIM2 a stencil, Elt b, Skeleton Native)
+    :: forall aenv stencil a b. (Stencil DIM2 a stencil, Elt b)
     => Native
     -> Gamma aenv
     -> IRFun1 Native aenv (stencil -> b)
@@ -250,7 +250,7 @@ mkStencil2DMiddle _ aenv f boundary ir1@(IRManifest v) =
 
 
 mkStencil2DLeftRight
-    :: forall aenv stencil a b. (Stencil DIM2 a stencil, Elt b, Skeleton Native)
+    :: forall aenv stencil a b. (Stencil DIM2 a stencil, Elt b)
     => Native
     -> Gamma aenv
     -> IRFun1 Native aenv (stencil -> b)
@@ -277,7 +277,7 @@ mkStencil2DLeftRight _ aenv f boundary ir1 =
 
 
 mkStencil2DTopBottom
-    :: forall aenv stencil a b. (Stencil DIM2 a stencil, Elt b, Skeleton Native)
+    :: forall aenv stencil a b. (Stencil DIM2 a stencil, Elt b)
     => Native
     -> Gamma aenv
     -> IRFun1 Native aenv (stencil -> b)
@@ -305,7 +305,7 @@ mkStencil2DTopBottom _ aenv f boundary ir1 =
 
 mkStencil22DMiddle
     :: forall aenv stencil1 stencil2 a b c.
-       (Stencil DIM2 a stencil1, Stencil DIM2 b stencil2, Elt c, Skeleton Native)
+       (Stencil DIM2 a stencil1, Stencil DIM2 b stencil2, Elt c)
     => Native
     -> Gamma aenv
     -> IRFun2 Native aenv (stencil1 -> stencil2 -> c)
@@ -355,7 +355,7 @@ mkStencil22DMiddle _ aenv f b1 ir1@(IRManifest v1) b2 ir2@(IRManifest v2) =
 
 mkStencil22DLeftRight
     :: forall aenv stencil1 stencil2 a b c.
-       (Stencil DIM2 a stencil1, Stencil DIM2 b stencil2, Elt c, Skeleton Native)
+       (Stencil DIM2 a stencil1, Stencil DIM2 b stencil2, Elt c)
     => Native
     -> Gamma aenv
     -> IRFun2 Native aenv (stencil1 -> stencil2 -> c)
@@ -384,7 +384,7 @@ mkStencil22DLeftRight _ aenv f b1 ir1 b2 ir2 =
 
 mkStencil22DTopBottom
     :: forall aenv stencil1 stencil2 a b c.
-       (Stencil DIM2 a stencil1, Stencil DIM2 b stencil2, Elt c, Skeleton Native)
+       (Stencil DIM2 a stencil1, Stencil DIM2 b stencil2, Elt c)
     => Native
     -> Gamma aenv
     -> IRFun2 Native aenv (stencil1 -> stencil2 -> c)
