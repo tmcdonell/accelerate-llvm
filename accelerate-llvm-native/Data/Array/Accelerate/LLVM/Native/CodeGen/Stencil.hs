@@ -195,11 +195,11 @@ mkStencil2DMiddle _ aenv f _b1 ir1@(IRManifest v) =
     remainder <- A.rem integralType yrange (int 4)
     y'        <- sub numType y1 remainder
     --
-    imapFromStepTo y0 (int 4) y' $ \y ->
-      forM_ [0..3] $ \dy -> do
-        ydy <- add numType y (int dy)
-        imapFromTo x0 x1 $ \x -> do
-          let ix = index2D x ydy
+    imapFromStepTo y0 (int 4) y' $ \y -> do
+      ys <- forM [1..3] $ \dy -> add numType y (int dy)
+      imapFromTo x0 x1 $ \x -> do
+        forM_ (y:ys) $ \y_tile -> do
+          let ix = index2D x y_tile
           i <- intOfIndex (irArrayShape arrOut) ix
           s <- stencilAccess Nothing (irArray (aprj v aenv)) ix
           r <- app1 f s
