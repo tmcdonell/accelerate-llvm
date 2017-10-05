@@ -16,6 +16,8 @@
 module Data.Array.Accelerate.LLVM.Native.CodeGen.Stencil
   where
 
+import Control.Monad
+
 -- accelerate
 import Data.Array.Accelerate.AST                                    hiding (stencilAccess)
 import Data.Array.Accelerate.Analysis.Match
@@ -193,25 +195,15 @@ mkStencil2DMiddle _ aenv f _b1 ir1@(IRManifest v) =
     remainder <- A.rem integralType yrange (int 4)
     y'        <- sub numType y1 remainder
     --
-    imapFromStepTo y0 (int 4) y' $ \y -> do
-      y_1 <- add numType y (int 1)
-      y_2 <- add numType y (int 2)
-      y_3 <- add numType y (int 3)
-      imapFromTo x0 x1 $ \x -> do
-        let ix = index2D x y
-        i0 <- intOfIndex (irArrayShape arrOut) ix
-        i1 <- intOfIndex (irArrayShape arrOut) (index2D x y_1)
-        i2 <- intOfIndex (irArrayShape arrOut) (index2D x y_2)
-        i3 <- intOfIndex (irArrayShape arrOut) (index2D x y_3)
-        (s0, s1, s2, s3) <- stencilAccesses Nothing (irArray (aprj v aenv)) ix
-        r0 <- app1 f s0
-        r1 <- app1 f s1
-        r2 <- app1 f s2
-        r3 <- app1 f s3
-        writeArray arrOut i0 r0
-        writeArray arrOut i1 r1
-        writeArray arrOut i2 r2
-        writeArray arrOut i3 r3
+    imapFromStepTo y0 (int 4) y' $ \y ->
+      forM_ [0..3] $ \dy -> do
+        ydy <- add numType y (int dy)
+        imapFromTo x0 x1 $ \x -> do
+          let ix = index2D x ydy
+          i <- intOfIndex (irArrayShape arrOut) ix
+          s <- stencilAccess Nothing (irArray (aprj v aenv)) ix
+          r <- app1 f s
+          writeArray arrOut i r
     -- Do the last few rows that aren't in the groups of 4.
     imapFromTo y' y1 $ \y ->
       imapFromTo x0 x1 $ \x ->
