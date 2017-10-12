@@ -184,7 +184,7 @@ mkStencil2DMiddle
     -> Boundary (IR a)
     -> IRManifest Native aenv (Array DIM2 a)
     -> CodeGen (IROpenAcc Native aenv (Array DIM2 b))
-mkStencil2DMiddle _ aenv f _b1 ir1@(IRManifest v) =
+mkStencil2DMiddle _ aenv f _b1 ir1 =
   let
       (y0,y1,x0,x1, paramGang) = gangParam2D
       (arrOut, paramOut)       = mutableArray ("out" :: Name (Array DIM2 b))
@@ -199,11 +199,7 @@ mkStencil2DMiddle _ aenv f _b1 ir1@(IRManifest v) =
       ys <- forM [1..3] $ \dy -> add numType y (int dy)
       imapFromTo x0 x1 $ \x -> do
         forM_ (y:ys) $ \y_tile -> do
-          let ix = index2D x y_tile
-          i <- intOfIndex (irArrayShape arrOut) ix
-          s <- stencilAccess Nothing (irArray (aprj v aenv)) ix
-          r <- app1 f s
-          writeArray arrOut i r
+          stencilElement Nothing aenv f ir1 arrOut x y_tile
     -- Do the last few rows that aren't in the groups of 4.
     imapFromTo y' y1 $ \y ->
       imapFromTo x0 x1 $ \x ->
@@ -277,7 +273,7 @@ mkStencil22DMiddle
     -> Boundary (IR b)
     -> IRManifest Native aenv (Array DIM2 b)
     -> CodeGen (IROpenAcc Native aenv (Array DIM2 c))
-mkStencil22DMiddle _ aenv f _b1 ir1@(IRManifest v1) _b2 ir2@(IRManifest v2) =
+mkStencil22DMiddle _ aenv f _b1 ir1 _b2 ir2 =
   let
       (y0,y1,x0,x1, paramGang) = gangParam2D
       (arrOut, paramOut)       = mutableArray ("out" :: Name (Array DIM2 c))
@@ -292,12 +288,7 @@ mkStencil22DMiddle _ aenv f _b1 ir1@(IRManifest v1) _b2 ir2@(IRManifest v2) =
       ys <- forM [1..3] $ \dy -> add numType y (int dy)
       imapFromTo x0 x1 $ \x -> do
         forM_ (y:ys) $ \y_tile -> do
-          let ix = index2D x y_tile
-          i  <- intOfIndex (irArrayShape arrOut) ix
-          s1 <- stencilAccess Nothing (irArray (aprj v1 aenv)) ix
-          s2 <- stencilAccess Nothing (irArray (aprj v2 aenv)) ix
-          r  <- app2 f s1 s2
-          writeArray arrOut i r
+          stencilElement2 Nothing Nothing aenv f ir1 ir2 arrOut x y_tile
     -- Do the last few rows that aren't in the groups of 4.
     imapFromTo y' y1 $ \y ->
       imapFromTo x0 x1 $ \x ->
