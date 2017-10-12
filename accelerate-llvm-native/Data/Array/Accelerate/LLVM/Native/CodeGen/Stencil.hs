@@ -289,25 +289,15 @@ mkStencil22DMiddle _ aenv f _b1 ir1@(IRManifest v1) _b2 ir2@(IRManifest v2) =
     y'        <- sub numType y1 remainder
     --
     imapFromStepTo y0 (int 4) y' $ \y -> do
-      y_1 <- add numType y (int 1)
-      y_2 <- add numType y (int 2)
-      y_3 <- add numType y (int 3)
+      ys <- forM [1..3] $ \dy -> add numType y (int dy)
       imapFromTo x0 x1 $ \x -> do
-        let ix = index2D x y
-        i0 <- intOfIndex (irArrayShape arrOut) ix
-        i1 <- intOfIndex (irArrayShape arrOut) (index2D x y_1)
-        i2 <- intOfIndex (irArrayShape arrOut) (index2D x y_2)
-        i3 <- intOfIndex (irArrayShape arrOut) (index2D x y_3)
-        (s10, s11, s12, s13) <- stencilAccesses Nothing (irArray (aprj v1 aenv)) ix
-        (s20, s21, s22, s23) <- stencilAccesses Nothing (irArray (aprj v2 aenv)) ix
-        r0 <- app2 f s10 s20
-        r1 <- app2 f s11 s21
-        r2 <- app2 f s12 s22
-        r3 <- app2 f s13 s23
-        writeArray arrOut i0 r0
-        writeArray arrOut i1 r1
-        writeArray arrOut i2 r2
-        writeArray arrOut i3 r3
+        forM_ (y:ys) $ \y_tile -> do
+          let ix = index2D x y_tile
+          i  <- intOfIndex (irArrayShape arrOut) ix
+          s1 <- stencilAccess Nothing (irArray (aprj v1 aenv)) ix
+          s2 <- stencilAccess Nothing (irArray (aprj v2 aenv)) ix
+          r  <- app2 f s1 s2
+          writeArray arrOut i r
     -- Do the last few rows that aren't in the groups of 4.
     imapFromTo y' y1 $ \y ->
       imapFromTo x0 x1 $ \x ->
