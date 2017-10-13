@@ -99,9 +99,10 @@ mkStencil_2D stencilN jBounds nBounds aenv irs stenElem =
       unrollN = 4
       --
       evalElem bounds x y = do
-        let ix = index2D x y
-        i     <- intOfIndex (irArrayShape arrOut) ix
+        let ix = IR (OP_Pair (OP_Pair OP_Unit y) x)
+        i <- intOfIndex (irArrayShape arrOut) ix
         writeArray arrOut i =<< stenElem bounds ix i
+        
       --
   in
     foldr1 (+++) <$> sequence
@@ -174,7 +175,3 @@ gangParam2D =
       , scalarParameter t height
       ]
     )
-
-
-index2D :: IR Int -> IR Int -> IR DIM2
-index2D (IR x) (IR y) = IR (OP_Pair (OP_Pair OP_Unit y) x)
