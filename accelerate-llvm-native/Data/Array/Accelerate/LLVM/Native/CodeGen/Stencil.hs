@@ -87,30 +87,9 @@ mkStencil2 n aenv f b1 ir1 b2 ir2
   = defaultStencil2 n aenv f b1 ir1 b2 ir2
 
 
-
-gangParam2D :: (IR Int, IR Int, IR Int, IR Int, [LLVM.Parameter])
+gangParam2D :: ( IR Int, IR Int, IR Int
+               , IR Int, IR Int, IR Int, [LLVM.Parameter])
 gangParam2D =
-  let t      = scalarType
-      startx = "ix.start"
-      endx   = "ix.end"
-      starty = "iy.start"
-      endy   = "iy.end"
-  in
-    ( local t starty
-    , local t endy
-    , local t startx
-    , local t endx
-    , [ scalarParameter t starty
-      , scalarParameter t endy
-      , scalarParameter t startx
-      , scalarParameter t endx
-      ]
-    )
-
-
-gangParam2DSides :: ( IR Int, IR Int, IR Int
-                    , IR Int, IR Int, IR Int, [LLVM.Parameter])
-gangParam2DSides =
   let t            = scalarType
       start        = "ix.start"
       end          = "ix.end"
@@ -195,11 +174,12 @@ mkStencil2DMiddle
      -> CodeGen (IROpenAcc Native aenv a)
 mkStencil2DMiddle fnName stenElem bounds aenv f irs =
   let
-      (y0,y1,x0,x1, paramGang) = gangParam2D
-      (arrOut, paramOut)       = mutableArray ("out" :: Name (Array DIM2 b))
-      paramEnv                 = envParam aenv
+      (y0, y1, x0, _borderHeight, width, _height, paramGang) = gangParam2D
+      (arrOut, paramOut) = mutableArray ("out" :: Name (Array DIM2 b))
+      paramEnv           = envParam aenv
   in
   makeOpenAcc fnName (paramGang ++ paramOut ++ paramEnv) $ do
+    x1        <- sub numType width x0
     yrange    <- sub numType y1 y0
     remainder <- A.rem integralType yrange (int 4)
     y'        <- sub numType y1 remainder
@@ -235,7 +215,7 @@ mkStencil2DLeftRight
      -> CodeGen (IROpenAcc Native aenv a)
 mkStencil2DLeftRight fnName stenElem bounds aenv f irs =
   let
-      (start, end, borderWidth, _borderHeight, width, _height, paramGang) = gangParam2DSides
+      (start, end, borderWidth, _borderHeight, width, _height, paramGang) = gangParam2D
       (arrOut, paramOut) = mutableArray ("out" :: Name (Array DIM2 b))
       paramEnv           = envParam aenv
   in
@@ -269,7 +249,7 @@ mkStencil2DTopBottom
   -> CodeGen (IROpenAcc Native aenv a)
 mkStencil2DTopBottom fnName stenElem bounds aenv f irs =
   let
-      (start, end, _borderWidth, borderHeight, _width, height, paramGang) = gangParam2DSides
+      (start, end, _borderWidth, borderHeight, _width, height, paramGang) = gangParam2D
       (arrOut, paramOut) = mutableArray ("out" :: Name (Array DIM2 b))
       paramEnv           = envParam aenv
   in
