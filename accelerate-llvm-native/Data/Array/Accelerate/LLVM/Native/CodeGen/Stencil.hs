@@ -281,20 +281,40 @@ mkStencil2DTopBottom
     -> Boundary (IR a)
     -> IRManifest Native aenv (Array DIM2 a)
     -> CodeGen (IROpenAcc Native aenv (Array DIM2 b))
-mkStencil2DTopBottom _ aenv f boundary ir1 =
+mkStencil2DTopBottom _ aenv f b1 ir1 =
+  mkStencil2DTopBottom' "stencil2DTopBottom" stencilElement (Just b1) aenv f ir1
+
+
+mkStencil2DTopBottom'
+  :: Elt e
+  => LLVM.Label
+  -> (t2
+     -> Gamma aenv1
+     -> t1
+     -> t
+     -> IRArray (Array DIM2 e)
+     -> IR Int
+     -> IR Int
+     -> CodeGen ())
+  -> t2
+  -> Gamma aenv1
+  -> t1
+  -> t
+  -> CodeGen (IROpenAcc Native aenv a)
+mkStencil2DTopBottom' fnName stenElem bounds aenv f irs =
   let
       (start, end, _borderWidth, borderHeight, _width, height, paramGang) = gangParam2DSides
       (arrOut, paramOut) = mutableArray ("out" :: Name (Array DIM2 b))
       paramEnv           = envParam aenv
   in
-  makeOpenAcc "stencil2DTopBottom" (paramGang ++ paramOut ++ paramEnv) $ do
+  makeOpenAcc fnName (paramGang ++ paramOut ++ paramEnv) $ do
     imapFromTo (int 0) borderHeight $ \y -> do
       bottomy <- sub numType height =<< add numType (int 1) y
       imapFromTo start end $ \x -> do
         -- Top
-        stencilElement (Just boundary) aenv f ir1 arrOut x y
+        stenElem bounds aenv f irs arrOut x y
         -- Bottom
-        stencilElement (Just boundary) aenv f ir1 arrOut x bottomy
+        stenElem bounds aenv f irs arrOut x bottomy
 
     return_
 
@@ -329,6 +349,7 @@ mkStencil22DLeftRight
 mkStencil22DLeftRight _ aenv f b1 ir1 b2 ir2 =
   mkStencil2DLeftRight' "stencil22DLeftRight" stencilElement2 (Just b1, Just b2) aenv f (ir1, ir2)
 
+
 mkStencil22DTopBottom
     :: forall aenv stencil1 stencil2 a b c.
        (Stencil DIM2 a stencil1, Stencil DIM2 b stencil2, Elt c)
@@ -341,18 +362,4 @@ mkStencil22DTopBottom
     -> IRManifest Native aenv (Array DIM2 b)
     -> CodeGen (IROpenAcc Native aenv (Array DIM2 c))
 mkStencil22DTopBottom _ aenv f b1 ir1 b2 ir2 =
-  let
-      (start, end, _borderWidth, borderHeight, _width, height, paramGang) = gangParam2DSides
-      (arrOut, paramOut) = mutableArray ("out" :: Name (Array DIM2 c))
-      paramEnv           = envParam aenv
-  in
-  makeOpenAcc "stencil22DTopBottom" (paramGang ++ paramOut ++ paramEnv) $ do
-    imapFromTo (int 0) borderHeight $ \y -> do
-      bottomy <- sub numType height =<< add numType (int 1) y
-      imapFromTo start end $ \x -> do
-        -- Top
-        stencilElement2 ((Just b1), (Just b2)) aenv f (ir1, ir2) arrOut x y
-        -- Bottom
-        stencilElement2 ((Just b1), (Just b2)) aenv f (ir1, ir2) arrOut x bottomy
-
-    return_
+  mkStencil2DTopBottom' "stencil22DTopBottom" stencilElement2 (Just b1, Just b2) aenv f (ir1, ir2)
