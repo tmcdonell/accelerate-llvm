@@ -98,12 +98,10 @@ mkStencil_2D stencilN jBounds nBounds aenv irs stenElem =
       params = paramGang ++ paramOut ++ paramEnv
       unrollN = 4
       --
-      evalElem bounds x y = do
+      evalElem bounds (IR x) (IR y) = do
         let ix = IR (OP_Pair (OP_Pair OP_Unit y) x)
         i <- intOfIndex (irArrayShape arrOut) ix
         writeArray arrOut i =<< stenElem bounds ix i
-        
-      --
   in
     foldr1 (+++) <$> sequence
       --
