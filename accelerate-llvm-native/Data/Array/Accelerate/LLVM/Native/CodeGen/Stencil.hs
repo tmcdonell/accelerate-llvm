@@ -59,7 +59,13 @@ mkStencil1
     -> CodeGen (IROpenAcc Native aenv (Array sh b))
 mkStencil1 n aenv f b1 ir1
   | Just Refl <- matchShapeType (undefined :: DIM2) (undefined :: sh)
-  = mkStencil_2D "stencil1" (Just b1) Nothing aenv f ir1 stencilElement
+  = mkStencil_2D "stencil1" (Just b1) Nothing aenv f ir1 $
+      \mBoundary aenv f (IRManifest v) arrOut x y -> do
+        let ix = index2D x y
+        i     <- intOfIndex (irArrayShape arrOut) ix
+        sten  <- stencilAccess mBoundary (irArray (aprj v aenv)) ix
+        r     <- app1 f sten
+        writeArray arrOut i r
   | otherwise
   = defaultStencil1 n aenv f b1 ir1
 
@@ -77,7 +83,15 @@ mkStencil2
     -> CodeGen (IROpenAcc Native aenv (Array sh c))
 mkStencil2 n aenv f b1 ir1 b2 ir2
   | Just Refl <- matchShapeType (undefined :: DIM2) (undefined :: sh)
-  = mkStencil_2D "stencil2" (Just b1, Just b2) (Nothing, Nothing) aenv f (ir1, ir2) stencilElement2
+  = mkStencil_2D "stencil2" (Just b1, Just b2) (Nothing, Nothing) aenv f (ir1, ir2) $
+      \(mB1, mB2) aenv f (IRManifest v1, IRManifest v2) arrOut x y -> do
+        let ix = index2D x y
+        i     <- intOfIndex (irArrayShape arrOut) ix
+        sten1 <- stencilAccess mB1 (irArray (aprj v1 aenv)) ix
+        sten2 <- stencilAccess mB2 (irArray (aprj v2 aenv)) ix
+        r     <- app2 f sten1 sten2
+        writeArray arrOut i r
+  --
   | otherwise
   = defaultStencil2 n aenv f b1 ir1 b2 ir2
 
@@ -181,41 +195,3 @@ gangParam2D =
 
 index2D :: IR Int -> IR Int -> IR DIM2
 index2D (IR x) (IR y) = IR (OP_Pair (OP_Pair OP_Unit y) x)
-
-
-stencilElement
-    :: forall aenv stencil a b. (Stencil DIM2 a stencil, Elt b)
-    => Maybe (Boundary (IR a))
-    -> Gamma aenv
-    -> IRFun1 Native aenv (stencil -> b)
-    -> IRManifest Native aenv (Array DIM2 a)
-    -> IRArray (Array DIM2 b)
-    -> IR Int
-    -> IR Int
-    -> CodeGen ()
-stencilElement mBoundary aenv f (IRManifest v) arrOut x y = do
-  let ix = index2D x y
-  i     <- intOfIndex (irArrayShape arrOut) ix
-  sten  <- stencilAccess mBoundary (irArray (aprj v aenv)) ix
-  r     <- app1 f sten
-  writeArray arrOut i r
-
-
-stencilElement2
-    :: forall aenv stencil1 stencil2 a b c.
-       (Stencil DIM2 a stencil1, Stencil DIM2 b stencil2, Elt c)
-    => (Maybe (Boundary (IR a)), Maybe (Boundary (IR b)))
-    -> Gamma aenv
-    -> IRFun2 Native aenv (stencil1 -> stencil2 -> c)
-    -> (IRManifest Native aenv (Array DIM2 a), IRManifest Native aenv (Array DIM2 b))
-    -> IRArray (Array DIM2 c)
-    -> IR Int
-    -> IR Int
-    -> CodeGen ()
-stencilElement2 (mB1, mB2) aenv f ((IRManifest v1), (IRManifest v2)) arrOut x y = do
-  let ix = index2D x y
-  i     <- intOfIndex (irArrayShape arrOut) ix
-  sten1 <- stencilAccess mB1 (irArray (aprj v1 aenv)) ix
-  sten2 <- stencilAccess mB2 (irArray (aprj v2 aenv)) ix
-  r     <- app2 f sten1 sten2
-  writeArray arrOut i r
