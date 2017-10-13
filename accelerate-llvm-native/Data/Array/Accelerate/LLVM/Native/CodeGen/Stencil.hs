@@ -56,10 +56,11 @@ mkStencil
     -> CodeGen (IROpenAcc Native aenv (Array sh b))
 mkStencil n aenv f b1 ir1
   | Just Refl <- matchShapeType (undefined :: DIM2) (undefined :: sh)
-  = foldr1 (+++) <$> sequence [ mkStencil2DLeftRight n aenv f b1 ir1
-                              , mkStencil2DTopBottom n aenv f b1 ir1
-                              , mkStencil2DMiddle    n aenv f b1 ir1
-                              ]
+  = foldr1 (+++) <$> sequence
+    [ mkStencil2DLeftRight' "stencil2DLeftRight" stencilElement (Just b1) aenv f ir1
+    , mkStencil2DTopBottom' "stencil2DTopBottom" stencilElement (Just b1) aenv f ir1
+    , mkStencil2DMiddle'    "stencil2DMiddle"    stencilElement  Nothing  aenv f ir1
+    ]
   | otherwise
   = defaultStencil1 n aenv f b1 ir1
 
@@ -77,10 +78,11 @@ mkStencil2
     -> CodeGen (IROpenAcc Native aenv (Array sh c))
 mkStencil2 n aenv f b1 ir1 b2 ir2
   | Just Refl <- matchShapeType (undefined :: DIM2) (undefined :: sh)
-  = foldr1 (+++) <$> sequence [ mkStencil22DLeftRight n aenv f b1 ir1 b2 ir2
-                              , mkStencil22DTopBottom n aenv f b1 ir1 b2 ir2
-                              , mkStencil22DMiddle    n aenv f b1 ir1 b2 ir2
-                              ]
+  = foldr1 (+++) <$> sequence
+    [ mkStencil2DLeftRight' "stencil22DLeftRight" stencilElement2 (Just b1, Just b2) aenv f (ir1, ir2)
+    , mkStencil2DTopBottom' "stencil22DTopBottom" stencilElement2 (Just b1, Just b2) aenv f (ir1, ir2)
+    , mkStencil2DMiddle'    "stencil22DMiddle"    stencilElement2 (Nothing, Nothing) aenv f (ir1, ir2)
+    ]
   | otherwise
   = defaultStencil2 n aenv f b1 ir1 b2 ir2
 
@@ -172,19 +174,7 @@ stencilElement2 (mB1, mB2) aenv f ((IRManifest v1), (IRManifest v2)) arrOut x y 
   sten1 <- stencilAccess mB1 (irArray (aprj v1 aenv)) ix
   sten2 <- stencilAccess mB2 (irArray (aprj v2 aenv)) ix
   r     <- app2 f sten1 sten2
-  writeArray arrOut i r
-
-
-mkStencil2DMiddle
-    :: forall aenv stencil a b. (Stencil DIM2 a stencil, Elt b)
-    => Native
-    -> Gamma aenv
-    -> IRFun1 Native aenv (stencil -> b)
-    -> Boundary (IR a)
-    -> IRManifest Native aenv (Array DIM2 a)
-    -> CodeGen (IROpenAcc Native aenv (Array DIM2 b))
-mkStencil2DMiddle _ aenv f _b1 ir1 =
-  mkStencil2DMiddle' "stencil2DMiddle" stencilElement Nothing aenv f ir1
+  writeArray arrOut i r  
 
 
 mkStencil2DMiddle'
@@ -227,18 +217,6 @@ mkStencil2DMiddle' fnName stenElem bounds aenv f irs =
     return_
 
 
-mkStencil2DLeftRight
-    :: forall aenv stencil a b. (Stencil DIM2 a stencil, Elt b)
-    => Native
-    -> Gamma aenv
-    -> IRFun1 Native aenv (stencil -> b)
-    -> Boundary (IR a)
-    -> IRManifest Native aenv (Array DIM2 a)
-    -> CodeGen (IROpenAcc Native aenv (Array DIM2 b))
-mkStencil2DLeftRight _ aenv f b1 ir1 =
-  mkStencil2DLeftRight' "stencil2DLeftRight" stencilElement (Just b1) aenv f ir1
-
-
 mkStencil2DLeftRight'
   :: Elt e =>
      LLVM.Label
@@ -273,18 +251,6 @@ mkStencil2DLeftRight' fnName stenElem bounds aenv f irs =
     return_
 
 
-mkStencil2DTopBottom
-    :: forall aenv stencil a b. (Stencil DIM2 a stencil, Elt b)
-    => Native
-    -> Gamma aenv
-    -> IRFun1 Native aenv (stencil -> b)
-    -> Boundary (IR a)
-    -> IRManifest Native aenv (Array DIM2 a)
-    -> CodeGen (IROpenAcc Native aenv (Array DIM2 b))
-mkStencil2DTopBottom _ aenv f b1 ir1 =
-  mkStencil2DTopBottom' "stencil2DTopBottom" stencilElement (Just b1) aenv f ir1
-
-
 mkStencil2DTopBottom'
   :: Elt e
   => LLVM.Label
@@ -317,49 +283,3 @@ mkStencil2DTopBottom' fnName stenElem bounds aenv f irs =
         stenElem bounds aenv f irs arrOut x bottomy
 
     return_
-
-
-
-mkStencil22DMiddle
-    :: forall aenv stencil1 stencil2 a b c.
-       (Stencil DIM2 a stencil1, Stencil DIM2 b stencil2, Elt c)
-    => Native
-    -> Gamma aenv
-    -> IRFun2 Native aenv (stencil1 -> stencil2 -> c)
-    -> Boundary (IR a)
-    -> IRManifest Native aenv (Array DIM2 a)
-    -> Boundary (IR b)
-    -> IRManifest Native aenv (Array DIM2 b)
-    -> CodeGen (IROpenAcc Native aenv (Array DIM2 c))
-mkStencil22DMiddle _ aenv f _b1 ir1 _b2 ir2 =
-  mkStencil2DMiddle' "stencil22DMiddle" stencilElement2 (Nothing, Nothing) aenv f (ir1, ir2)
-
-
-mkStencil22DLeftRight
-    :: forall aenv stencil1 stencil2 a b c.
-       (Stencil DIM2 a stencil1, Stencil DIM2 b stencil2, Elt c)
-    => Native
-    -> Gamma aenv
-    -> IRFun2 Native aenv (stencil1 -> stencil2 -> c)
-    -> Boundary (IR a)
-    -> IRManifest Native aenv (Array DIM2 a)
-    -> Boundary (IR b)
-    -> IRManifest Native aenv (Array DIM2 b)
-    -> CodeGen (IROpenAcc Native aenv (Array DIM2 c))
-mkStencil22DLeftRight _ aenv f b1 ir1 b2 ir2 =
-  mkStencil2DLeftRight' "stencil22DLeftRight" stencilElement2 (Just b1, Just b2) aenv f (ir1, ir2)
-
-
-mkStencil22DTopBottom
-    :: forall aenv stencil1 stencil2 a b c.
-       (Stencil DIM2 a stencil1, Stencil DIM2 b stencil2, Elt c)
-    => Native
-    -> Gamma aenv
-    -> IRFun2 Native aenv (stencil1 -> stencil2 -> c)
-    -> Boundary (IR a)
-    -> IRManifest Native aenv (Array DIM2 a)
-    -> Boundary (IR b)
-    -> IRManifest Native aenv (Array DIM2 b)
-    -> CodeGen (IROpenAcc Native aenv (Array DIM2 c))
-mkStencil22DTopBottom _ aenv f b1 ir1 b2 ir2 =
-  mkStencil2DTopBottom' "stencil22DTopBottom" stencilElement2 (Just b1, Just b2) aenv f (ir1, ir2)
