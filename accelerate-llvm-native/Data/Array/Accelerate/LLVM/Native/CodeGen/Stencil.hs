@@ -104,10 +104,11 @@ mkStencil_2D stencilN stenElem jBounds nBounds aenv f irs =
       (start, end, borderWidth, borderHeight, width, height, paramGang) = gangParam2D
       (arrOut, paramOut) = mutableArray ("out" :: Name (Array DIM2 b))
       paramEnv           = envParam aenv
+      params = paramGang ++ paramOut ++ paramEnv
   in
     foldr1 (+++) <$> sequence
       --
-      [ makeOpenAcc (Label $ stencilN <> "_2D_LeftRight") (paramGang ++ paramOut ++ paramEnv) $ do
+      [ makeOpenAcc (Label $ stencilN <> "_2D_LeftRight") params $ do
           imapFromTo (int 0) borderWidth $ \x -> do
             rightx <- sub numType width =<< add numType (int 1) x
             imapFromTo start end $ \y -> do
@@ -118,7 +119,7 @@ mkStencil_2D stencilN stenElem jBounds nBounds aenv f irs =
 
           return_
       --
-      , makeOpenAcc (Label $ stencilN <> "_2D_TopBottom") (paramGang ++ paramOut ++ paramEnv) $ do
+      , makeOpenAcc (Label $ stencilN <> "_2D_TopBottom") params $ do
           imapFromTo (int 0) borderHeight $ \y -> do
             bottomy <- sub numType height =<< add numType (int 1) y
             imapFromTo start end $ \x -> do
@@ -129,7 +130,7 @@ mkStencil_2D stencilN stenElem jBounds nBounds aenv f irs =
 
           return_
       --
-      , makeOpenAcc (Label $ stencilN <> "_2D_Middle") (paramGang ++ paramOut ++ paramEnv) $ do
+      , makeOpenAcc (Label $ stencilN <> "_2D_Middle") params $ do
           let (y0, y1, x0) = (start, end, borderWidth)
           x1        <- sub numType width x0
           yrange    <- sub numType y1 y0
