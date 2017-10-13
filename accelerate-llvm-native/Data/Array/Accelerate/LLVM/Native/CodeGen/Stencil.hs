@@ -105,6 +105,7 @@ mkStencil_2D stencilN stenElem jBounds nBounds aenv f irs =
       (arrOut, paramOut) = mutableArray ("out" :: Name (Array DIM2 b))
       paramEnv           = envParam aenv
       params = paramGang ++ paramOut ++ paramEnv
+      unrollN = 4
   in
     foldr1 (+++) <$> sequence
       --
@@ -134,15 +135,15 @@ mkStencil_2D stencilN stenElem jBounds nBounds aenv f irs =
           let (y0, y1, x0) = (start, end, borderWidth)
           x1        <- sub numType width x0
           yrange    <- sub numType y1 y0
-          remainder <- A.rem integralType yrange (int 4)
+          remainder <- A.rem integralType yrange (int unrollN)
           y'        <- sub numType y1 remainder
-          --
-          imapFromStepTo y0 (int 4) y' $ \y -> do
-            ys <- forM [1..3] $ \dy -> add numType y (int dy)
+          -- Evaluate most rows in groups of 4
+          imapFromStepTo y0 (int unrollN) y' $ \y -> do
+            ys <- forM [1..(unrollN-1)] $ \dy -> add numType y (int dy)
             imapFromTo x0 x1 $ \x -> do
               forM_ (y:ys) $ \y_tile -> do
                 stenElem nBounds aenv f irs arrOut x y_tile
-          -- Do the last few rows that aren't in the groups of 4.
+          -- Evaluate the remaining rows singularly
           imapFromTo y' y1 $ \y ->
             imapFromTo x0 x1 $ \x ->
               stenElem nBounds aenv f irs arrOut x y
