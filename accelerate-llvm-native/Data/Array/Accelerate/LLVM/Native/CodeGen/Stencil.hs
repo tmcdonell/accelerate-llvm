@@ -129,7 +129,24 @@ mkStencil_2D stencilN stenElem jBounds nBounds aenv f irs =
 
           return_
       --
-      , mkStencil2DMiddle    stencilN stenElem nBounds aenv f irs
+      , makeOpenAcc (Label $ stencilN <> "_2D_Middle") (paramGang ++ paramOut ++ paramEnv) $ do
+          let (y0, y1, x0) = (start, end, borderWidth)
+          x1        <- sub numType width x0
+          yrange    <- sub numType y1 y0
+          remainder <- A.rem integralType yrange (int 4)
+          y'        <- sub numType y1 remainder
+          --
+          imapFromStepTo y0 (int 4) y' $ \y -> do
+            ys <- forM [1..3] $ \dy -> add numType y (int dy)
+            imapFromTo x0 x1 $ \x -> do
+              forM_ (y:ys) $ \y_tile -> do
+                stenElem nBounds aenv f irs arrOut x y_tile
+          -- Do the last few rows that aren't in the groups of 4.
+          imapFromTo y' y1 $ \y ->
+            imapFromTo x0 x1 $ \x ->
+              stenElem nBounds aenv f irs arrOut x y
+
+          return_
       --
       ]
 
@@ -199,45 +216,4 @@ stencilElement2 (mB1, mB2) aenv f ((IRManifest v1), (IRManifest v2)) arrOut x y 
   sten1 <- stencilAccess mB1 (irArray (aprj v1 aenv)) ix
   sten2 <- stencilAccess mB2 (irArray (aprj v2 aenv)) ix
   r     <- app2 f sten1 sten2
-  writeArray arrOut i r  
-
-
-mkStencil2DMiddle
-  :: Elt e
-  => ShortByteString
-     -> (t2
-        -> Gamma aenv1
-        -> t1
-        -> t
-        -> IRArray (Array DIM2 e)
-        -> IR Int
-        -> IR Int
-        -> CodeGen ())
-     -> t2
-     -> Gamma aenv1
-     -> t1
-     -> t
-     -> CodeGen (IROpenAcc Native aenv a)
-mkStencil2DMiddle stencilN stenElem bounds aenv f irs =
-  let
-      (y0, y1, x0, _borderHeight, width, _height, paramGang) = gangParam2D
-      (arrOut, paramOut) = mutableArray ("out" :: Name (Array DIM2 b))
-      paramEnv           = envParam aenv
-  in
-  makeOpenAcc (Label $ stencilN <> "_2D_Middle") (paramGang ++ paramOut ++ paramEnv) $ do
-    x1        <- sub numType width x0
-    yrange    <- sub numType y1 y0
-    remainder <- A.rem integralType yrange (int 4)
-    y'        <- sub numType y1 remainder
-    --
-    imapFromStepTo y0 (int 4) y' $ \y -> do
-      ys <- forM [1..3] $ \dy -> add numType y (int dy)
-      imapFromTo x0 x1 $ \x -> do
-        forM_ (y:ys) $ \y_tile -> do
-          stenElem bounds aenv f irs arrOut x y_tile
-    -- Do the last few rows that aren't in the groups of 4.
-    imapFromTo y' y1 $ \y ->
-      imapFromTo x0 x1 $ \x ->
-        stenElem bounds aenv f irs arrOut x y
-
-    return_
+  writeArray arrOut i r
