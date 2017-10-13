@@ -100,12 +100,38 @@ mkStencil_2D
      -> t
      -> CodeGen (IROpenAcc Native aenv a)
 mkStencil_2D stencilN stenElem jBounds nBounds aenv f irs =
-  foldr1 (+++) <$> sequence
-    [ mkStencil2DLeftRight stencilN stenElem jBounds aenv f irs
-    , mkStencil2DTopBottom stencilN stenElem jBounds aenv f irs
-    , mkStencil2DMiddle    stencilN stenElem nBounds aenv f irs
-    ]
-    
+  let
+      (start, end, borderWidth, borderHeight, width, height, paramGang) = gangParam2D
+      (arrOut, paramOut) = mutableArray ("out" :: Name (Array DIM2 b))
+      paramEnv           = envParam aenv
+  in
+    foldr1 (+++) <$> sequence
+      --
+      [ makeOpenAcc (Label $ stencilN <> "_2D_LeftRight") (paramGang ++ paramOut ++ paramEnv) $ do
+          imapFromTo (int 0) borderWidth $ \x -> do
+            rightx <- sub numType width =<< add numType (int 1) x
+            imapFromTo start end $ \y -> do
+              -- Left
+              stenElem jBounds aenv f irs arrOut x y
+              -- Right
+              stenElem jBounds aenv f irs arrOut rightx y
+
+          return_
+      --
+      , makeOpenAcc (Label $ stencilN <> "_2D_TopBottom") (paramGang ++ paramOut ++ paramEnv) $ do
+          imapFromTo (int 0) borderHeight $ \y -> do
+            bottomy <- sub numType height =<< add numType (int 1) y
+            imapFromTo start end $ \x -> do
+              -- Top
+              stenElem jBounds aenv f irs arrOut x y
+              -- Bottom
+              stenElem jBounds aenv f irs arrOut x bottomy
+
+          return_
+      --
+      , mkStencil2DMiddle    stencilN stenElem nBounds aenv f irs
+      --
+      ]
 
 gangParam2D :: ( IR Int, IR Int, IR Int
                , IR Int, IR Int, IR Int, [LLVM.Parameter])
@@ -213,73 +239,5 @@ mkStencil2DMiddle stencilN stenElem bounds aenv f irs =
     imapFromTo y' y1 $ \y ->
       imapFromTo x0 x1 $ \x ->
         stenElem bounds aenv f irs arrOut x y
-
-    return_
-
-
-mkStencil2DLeftRight
-  :: Elt e
-  => ShortByteString
-     -> (t2
-        -> Gamma aenv1
-        -> t1
-        -> t
-        -> IRArray (Array DIM2 e)
-        -> IR Int
-        -> IR Int
-        -> CodeGen ())
-     -> t2
-     -> Gamma aenv1
-     -> t1
-     -> t
-     -> CodeGen (IROpenAcc Native aenv a)
-mkStencil2DLeftRight stencilN stenElem bounds aenv f irs =
-  let
-      (start, end, borderWidth, _borderHeight, width, _height, paramGang) = gangParam2D
-      (arrOut, paramOut) = mutableArray ("out" :: Name (Array DIM2 b))
-      paramEnv           = envParam aenv
-  in
-  makeOpenAcc (Label $ stencilN <> "_2D_LeftRight") (paramGang ++ paramOut ++ paramEnv) $ do
-    imapFromTo (int 0) borderWidth $ \x -> do
-      rightx <- sub numType width =<< add numType (int 1) x
-      imapFromTo start end $ \y -> do
-        -- Left
-        stenElem bounds aenv f irs arrOut x y
-        -- Right
-        stenElem bounds aenv f irs arrOut rightx y
-
-    return_
-
-
-mkStencil2DTopBottom
-  :: Elt e
-  => ShortByteString
-  -> (t2
-     -> Gamma aenv1
-     -> t1
-     -> t
-     -> IRArray (Array DIM2 e)
-     -> IR Int
-     -> IR Int
-     -> CodeGen ())
-  -> t2
-  -> Gamma aenv1
-  -> t1
-  -> t
-  -> CodeGen (IROpenAcc Native aenv a)
-mkStencil2DTopBottom stencilN stenElem bounds aenv f irs =
-  let
-      (start, end, _borderWidth, borderHeight, _width, height, paramGang) = gangParam2D
-      (arrOut, paramOut) = mutableArray ("out" :: Name (Array DIM2 b))
-      paramEnv           = envParam aenv
-  in
-  makeOpenAcc (Label $ stencilN <> "_2D_TopBottom") (paramGang ++ paramOut ++ paramEnv) $ do
-    imapFromTo (int 0) borderHeight $ \y -> do
-      bottomy <- sub numType height =<< add numType (int 1) y
-      imapFromTo start end $ \x -> do
-        -- Top
-        stenElem bounds aenv f irs arrOut x y
-        -- Bottom
-        stenElem bounds aenv f irs arrOut x bottomy
 
     return_
