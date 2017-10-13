@@ -235,23 +235,42 @@ mkStencil2DLeftRight
     -> Boundary (IR a)
     -> IRManifest Native aenv (Array DIM2 a)
     -> CodeGen (IROpenAcc Native aenv (Array DIM2 b))
-mkStencil2DLeftRight _ aenv f boundary ir1 =
+mkStencil2DLeftRight _ aenv f b1 ir1 =
+  mkStencil2DLeftRight' "stencil2DLeftRight" stencilElement (Just b1) aenv f ir1
+
+
+mkStencil2DLeftRight'
+  :: Elt e =>
+     LLVM.Label
+     -> (t2
+        -> Gamma aenv1
+        -> t1
+        -> t
+        -> IRArray (Array DIM2 e)
+        -> IR Int
+        -> IR Int
+        -> CodeGen ())
+     -> t2
+     -> Gamma aenv1
+     -> t1
+     -> t
+     -> CodeGen (IROpenAcc Native aenv a)
+mkStencil2DLeftRight' fnName stenElem bounds aenv f irs =
   let
       (start, end, borderWidth, _borderHeight, width, _height, paramGang) = gangParam2DSides
       (arrOut, paramOut) = mutableArray ("out" :: Name (Array DIM2 b))
       paramEnv           = envParam aenv
   in
-  makeOpenAcc "stencil2DLeftRight" (paramGang ++ paramOut ++ paramEnv) $ do
+  makeOpenAcc fnName (paramGang ++ paramOut ++ paramEnv) $ do
     imapFromTo (int 0) borderWidth $ \x -> do
       rightx <- sub numType width =<< add numType (int 1) x
       imapFromTo start end $ \y -> do
         -- Left
-        stencilElement (Just boundary) aenv f ir1 arrOut x y
+        stenElem bounds aenv f irs arrOut x y
         -- Right
-        stencilElement (Just boundary) aenv f ir1 arrOut rightx y
+        stenElem bounds aenv f irs arrOut rightx y
 
     return_
-
 
 
 mkStencil2DTopBottom
@@ -308,22 +327,7 @@ mkStencil22DLeftRight
     -> IRManifest Native aenv (Array DIM2 b)
     -> CodeGen (IROpenAcc Native aenv (Array DIM2 c))
 mkStencil22DLeftRight _ aenv f b1 ir1 b2 ir2 =
-  let
-      (start, end, borderWidth, _borderHeight, width, _height, paramGang) = gangParam2DSides
-      (arrOut, paramOut) = mutableArray ("out" :: Name (Array DIM2 c))
-      paramEnv           = envParam aenv
-  in
-  makeOpenAcc "stencil22DLeftRight" (paramGang ++ paramOut ++ paramEnv) $ do
-    imapFromTo (int 0) borderWidth $ \x -> do
-      rightx <- sub numType width =<< add numType (int 1) x
-      imapFromTo start end $ \y -> do
-        -- Left
-        stencilElement2 ((Just b1), (Just b2)) aenv f (ir1, ir2) arrOut x y
-        -- Right
-        stencilElement2 ((Just b1), (Just b2)) aenv f (ir1, ir2) arrOut rightx y
-
-    return_
-
+  mkStencil2DLeftRight' "stencil22DLeftRight" stencilElement2 (Just b1, Just b2) aenv f (ir1, ir2)
 
 mkStencil22DTopBottom
     :: forall aenv stencil1 stencil2 a b c.
