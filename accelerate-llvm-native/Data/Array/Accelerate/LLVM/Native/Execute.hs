@@ -503,13 +503,13 @@ stencil12DOp stencilR exe gamma aenv () arr = withExecutable exe $ \nativeExecut
     let rowsPerRun = 1 `max` (height `quot` (gangSize * 10))
 
     -- Core stencil region, without boundary checks
-    executeOp rowsPerRun fillP (nativeExecutable !# "stencil2DMiddle") gamma aenv (IE borderHeight (height - borderHeight)) params
+    executeOp rowsPerRun fillP (nativeExecutable !# "stencil1_2D_Middle") gamma aenv (IE borderHeight (height - borderHeight)) params
 
     -- Exclude the corners from these sides
-    executeOp 1 fillS (nativeExecutable !# "stencil2DLeftRight") gamma aenv (IE borderHeight (height - borderHeight)) params
+    executeOp 1 fillS (nativeExecutable !# "stencil1_2D_LeftRight") gamma aenv (IE borderHeight (height - borderHeight)) params
 
     -- Include the corners in these sides
-    executeOp 1 fillS (nativeExecutable !# "stencil2DTopBottom") gamma aenv (IE 0 width) params
+    executeOp 1 fillS (nativeExecutable !# "stencil1_2D_TopBottom") gamma aenv (IE 0 width) params
 
     return out
 
@@ -573,13 +573,13 @@ stencil22DOp stencilR1 stencilR2 exe gamma aenv () arr brr =
       let rowsPerRun = 1 `max` (height `quot` (gangSize * 10))
 
       -- Core stencil region, without boundary checks
-      executeOp rowsPerRun fillP (nativeExecutable !# "stencil22DMiddle") gamma aenv (IE borderHeight (height - borderHeight)) params
+      executeOp rowsPerRun fillP (nativeExecutable !# "stencil2_2D_Middle") gamma aenv (IE borderHeight (height - borderHeight)) params
 
       -- Exclude the corners from these sides
-      executeOp 1 fillS (nativeExecutable !# "stencil22DLeftRight") gamma aenv (IE borderHeight (height - borderHeight)) params
+      executeOp 1 fillS (nativeExecutable !# "stencil2_2D_LeftRight") gamma aenv (IE borderHeight (height - borderHeight)) params
 
       -- Include the corners in these sides
-      executeOp 1 fillS (nativeExecutable !# "stencil22DTopBottom") gamma aenv (IE 0 width) params
+      executeOp 1 fillS (nativeExecutable !# "stencil2_2D_TopBottom") gamma aenv (IE 0 width) params
 
       return out
 

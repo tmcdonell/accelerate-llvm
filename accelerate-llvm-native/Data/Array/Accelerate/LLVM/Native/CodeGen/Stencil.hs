@@ -42,8 +42,11 @@ import Data.Array.Accelerate.LLVM.Native.CodeGen.Loop
 
 import Data.Array.Accelerate.LLVM.CodeGen.Skeleton
 
+import Data.ByteString.Short
+import Data.Monoid
+
 import qualified LLVM.AST.Global                                    as LLVM
-import qualified LLVM.AST.Type.Name                                 as LLVM
+import           LLVM.AST.Type.Name
 
 
 mkStencil1
@@ -57,9 +60,9 @@ mkStencil1
 mkStencil1 n aenv f b1 ir1
   | Just Refl <- matchShapeType (undefined :: DIM2) (undefined :: sh)
   = foldr1 (+++) <$> sequence
-    [ mkStencil2DLeftRight "stencil2DLeftRight" stencilElement (Just b1) aenv f ir1
-    , mkStencil2DTopBottom "stencil2DTopBottom" stencilElement (Just b1) aenv f ir1
-    , mkStencil2DMiddle    "stencil2DMiddle"    stencilElement  Nothing  aenv f ir1
+    [ mkStencil2DLeftRight "stencil1" stencilElement (Just b1) aenv f ir1
+    , mkStencil2DTopBottom "stencil1" stencilElement (Just b1) aenv f ir1
+    , mkStencil2DMiddle    "stencil1" stencilElement  Nothing  aenv f ir1
     ]
   | otherwise
   = defaultStencil1 n aenv f b1 ir1
@@ -79,9 +82,9 @@ mkStencil2
 mkStencil2 n aenv f b1 ir1 b2 ir2
   | Just Refl <- matchShapeType (undefined :: DIM2) (undefined :: sh)
   = foldr1 (+++) <$> sequence
-    [ mkStencil2DLeftRight "stencil22DLeftRight" stencilElement2 (Just b1, Just b2) aenv f (ir1, ir2)
-    , mkStencil2DTopBottom "stencil22DTopBottom" stencilElement2 (Just b1, Just b2) aenv f (ir1, ir2)
-    , mkStencil2DMiddle    "stencil22DMiddle"    stencilElement2 (Nothing, Nothing) aenv f (ir1, ir2)
+    [ mkStencil2DLeftRight "stencil2" stencilElement2 (Just b1, Just b2) aenv f (ir1, ir2)
+    , mkStencil2DTopBottom "stencil2" stencilElement2 (Just b1, Just b2) aenv f (ir1, ir2)
+    , mkStencil2DMiddle    "stencil2" stencilElement2 (Nothing, Nothing) aenv f (ir1, ir2)
     ]
   | otherwise
   = defaultStencil2 n aenv f b1 ir1 b2 ir2
@@ -158,7 +161,7 @@ stencilElement2 (mB1, mB2) aenv f ((IRManifest v1), (IRManifest v2)) arrOut x y 
 
 mkStencil2DMiddle
   :: Elt e
-  => LLVM.Label
+  => ShortByteString
      -> (t2
         -> Gamma aenv1
         -> t1
@@ -172,13 +175,13 @@ mkStencil2DMiddle
      -> t1
      -> t
      -> CodeGen (IROpenAcc Native aenv a)
-mkStencil2DMiddle fnName stenElem bounds aenv f irs =
+mkStencil2DMiddle stencilN stenElem bounds aenv f irs =
   let
       (y0, y1, x0, _borderHeight, width, _height, paramGang) = gangParam2D
       (arrOut, paramOut) = mutableArray ("out" :: Name (Array DIM2 b))
       paramEnv           = envParam aenv
   in
-  makeOpenAcc fnName (paramGang ++ paramOut ++ paramEnv) $ do
+  makeOpenAcc (Label $ stencilN <> "_2D_Middle") (paramGang ++ paramOut ++ paramEnv) $ do
     x1        <- sub numType width x0
     yrange    <- sub numType y1 y0
     remainder <- A.rem integralType yrange (int 4)
@@ -198,8 +201,8 @@ mkStencil2DMiddle fnName stenElem bounds aenv f irs =
 
 
 mkStencil2DLeftRight
-  :: Elt e =>
-     LLVM.Label
+  :: Elt e
+  => ShortByteString
      -> (t2
         -> Gamma aenv1
         -> t1
@@ -213,13 +216,13 @@ mkStencil2DLeftRight
      -> t1
      -> t
      -> CodeGen (IROpenAcc Native aenv a)
-mkStencil2DLeftRight fnName stenElem bounds aenv f irs =
+mkStencil2DLeftRight stencilN stenElem bounds aenv f irs =
   let
       (start, end, borderWidth, _borderHeight, width, _height, paramGang) = gangParam2D
       (arrOut, paramOut) = mutableArray ("out" :: Name (Array DIM2 b))
       paramEnv           = envParam aenv
   in
-  makeOpenAcc fnName (paramGang ++ paramOut ++ paramEnv) $ do
+  makeOpenAcc (Label $ stencilN <> "_2D_LeftRight") (paramGang ++ paramOut ++ paramEnv) $ do
     imapFromTo (int 0) borderWidth $ \x -> do
       rightx <- sub numType width =<< add numType (int 1) x
       imapFromTo start end $ \y -> do
@@ -233,7 +236,7 @@ mkStencil2DLeftRight fnName stenElem bounds aenv f irs =
 
 mkStencil2DTopBottom
   :: Elt e
-  => LLVM.Label
+  => ShortByteString
   -> (t2
      -> Gamma aenv1
      -> t1
@@ -247,13 +250,13 @@ mkStencil2DTopBottom
   -> t1
   -> t
   -> CodeGen (IROpenAcc Native aenv a)
-mkStencil2DTopBottom fnName stenElem bounds aenv f irs =
+mkStencil2DTopBottom stencilN stenElem bounds aenv f irs =
   let
       (start, end, _borderWidth, borderHeight, _width, height, paramGang) = gangParam2D
       (arrOut, paramOut) = mutableArray ("out" :: Name (Array DIM2 b))
       paramEnv           = envParam aenv
   in
-  makeOpenAcc fnName (paramGang ++ paramOut ++ paramEnv) $ do
+  makeOpenAcc (Label $ stencilN <> "_2D_TopBottom") (paramGang ++ paramOut ++ paramEnv) $ do
     imapFromTo (int 0) borderHeight $ \y -> do
       bottomy <- sub numType height =<< add numType (int 1) y
       imapFromTo start end $ \x -> do
