@@ -59,11 +59,7 @@ mkStencil1
     -> CodeGen (IROpenAcc Native aenv (Array sh b))
 mkStencil1 n aenv f b1 ir1
   | Just Refl <- matchShapeType (undefined :: DIM2) (undefined :: sh)
-  = foldr1 (+++) <$> sequence
-    [ mkStencil2DLeftRight "stencil1" stencilElement (Just b1) aenv f ir1
-    , mkStencil2DTopBottom "stencil1" stencilElement (Just b1) aenv f ir1
-    , mkStencil2DMiddle    "stencil1" stencilElement  Nothing  aenv f ir1
-    ]
+  = mkStencil_2D "stencil1" stencilElement (Just b1) Nothing aenv f ir1
   | otherwise
   = defaultStencil1 n aenv f b1 ir1
 
@@ -81,14 +77,35 @@ mkStencil2
     -> CodeGen (IROpenAcc Native aenv (Array sh c))
 mkStencil2 n aenv f b1 ir1 b2 ir2
   | Just Refl <- matchShapeType (undefined :: DIM2) (undefined :: sh)
-  = foldr1 (+++) <$> sequence
-    [ mkStencil2DLeftRight "stencil2" stencilElement2 (Just b1, Just b2) aenv f (ir1, ir2)
-    , mkStencil2DTopBottom "stencil2" stencilElement2 (Just b1, Just b2) aenv f (ir1, ir2)
-    , mkStencil2DMiddle    "stencil2" stencilElement2 (Nothing, Nothing) aenv f (ir1, ir2)
-    ]
+  = mkStencil_2D "stencil2" stencilElement2 (Just b1, Just b2) (Nothing, Nothing) aenv f (ir1, ir2)
   | otherwise
   = defaultStencil2 n aenv f b1 ir1 b2 ir2
 
+
+mkStencil_2D 
+  :: Elt e
+     => ShortByteString
+     -> (t2
+        -> Gamma aenv1
+        -> t1
+        -> t
+        -> IRArray (Array DIM2 e)
+        -> IR Int
+        -> IR Int
+        -> CodeGen ())
+     -> t2
+     -> t2
+     -> Gamma aenv1
+     -> t1
+     -> t
+     -> CodeGen (IROpenAcc Native aenv a)
+mkStencil_2D stencilN stenElem jBounds nBounds aenv f irs =
+  foldr1 (+++) <$> sequence
+    [ mkStencil2DLeftRight stencilN stenElem jBounds aenv f irs
+    , mkStencil2DTopBottom stencilN stenElem jBounds aenv f irs
+    , mkStencil2DMiddle    stencilN stenElem nBounds aenv f irs
+    ]
+    
 
 gangParam2D :: ( IR Int, IR Int, IR Int
                , IR Int, IR Int, IR Int, [LLVM.Parameter])
