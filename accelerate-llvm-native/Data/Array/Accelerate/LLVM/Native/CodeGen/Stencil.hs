@@ -59,8 +59,8 @@ mkStencil1
     -> CodeGen (IROpenAcc Native aenv (Array sh b))
 mkStencil1 n aenv f b1 ir1@(IRManifest v1)
   | Just Refl <- matchShapeType (undefined :: DIM2) (undefined :: sh)
-  = mkStencil_2D "stencil1" (Just b1) Nothing aenv ir1 $
-      \mB1 ix i -> do
+  = mkStencil_2D "stencil1" (Just b1) Nothing aenv $
+      \mB1 ix -> do
         sten <- stencilAccess mB1 (irArray (aprj v1 aenv)) ix
         app1 f sten
   | otherwise
@@ -80,8 +80,8 @@ mkStencil2
     -> CodeGen (IROpenAcc Native aenv (Array sh c))
 mkStencil2 n aenv f b1 ir1@(IRManifest v1) b2 ir2@(IRManifest v2)
   | Just Refl <- matchShapeType (undefined :: DIM2) (undefined :: sh)
-  = mkStencil_2D "stencil2" (Just b1, Just b2) (Nothing, Nothing) aenv (ir1, ir2) $
-      \(mB1, mB2) ix i -> do
+  = mkStencil_2D "stencil2" (Just b1, Just b2) (Nothing, Nothing) aenv $
+      \(mB1, mB2) ix -> do
         sten1 <- stencilAccess mB1 (irArray (aprj v1 aenv)) ix
         sten2 <- stencilAccess mB2 (irArray (aprj v2 aenv)) ix
         app2 f sten1 sten2
@@ -90,7 +90,15 @@ mkStencil2 n aenv f b1 ir1@(IRManifest v1) b2 ir2@(IRManifest v2)
   = defaultStencil2 n aenv f b1 ir1 b2 ir2
 
 
-mkStencil_2D stencilN jBounds nBounds aenv irs stenElem =
+mkStencil_2D
+  :: Elt e
+  => ShortByteString
+  -> bounds
+  -> bounds
+  -> Gamma aenv1
+  -> (bounds -> IR DIM2 -> CodeGen (IR e))
+  -> CodeGen (IROpenAcc Native aenv a)
+mkStencil_2D stencilN jBounds nBounds aenv stenElem =
   let
       (start, end, borderWidth, borderHeight, width, height, paramGang) = gangParam2D
       (arrOut, paramOut) = mutableArray ("out" :: Name (Array DIM2 b))
@@ -101,7 +109,7 @@ mkStencil_2D stencilN jBounds nBounds aenv irs stenElem =
       evalElem bounds (IR x) (IR y) = do
         let ix = IR (OP_Pair (OP_Pair OP_Unit y) x)
         i <- intOfIndex (irArrayShape arrOut) ix
-        writeArray arrOut i =<< stenElem bounds ix i
+        writeArray arrOut i =<< stenElem bounds ix
   in
     foldr1 (+++) <$> sequence
       --
