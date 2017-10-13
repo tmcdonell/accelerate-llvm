@@ -46,7 +46,7 @@ import qualified LLVM.AST.Global                                    as LLVM
 import qualified LLVM.AST.Type.Name                                 as LLVM
 
 
-mkStencil
+mkStencil1
     :: forall aenv stencil a b sh. (Stencil sh a stencil, Elt b, Skeleton Native)
     => Native
     -> Gamma aenv
@@ -54,7 +54,7 @@ mkStencil
     -> Boundary (IR a)
     -> IRManifest Native aenv (Array sh a)
     -> CodeGen (IROpenAcc Native aenv (Array sh b))
-mkStencil n aenv f b1 ir1
+mkStencil1 n aenv f b1 ir1
   | Just Refl <- matchShapeType (undefined :: DIM2) (undefined :: sh)
   = foldr1 (+++) <$> sequence
     [ mkStencil2DLeftRight "stencil2DLeftRight" stencilElement (Just b1) aenv f ir1
