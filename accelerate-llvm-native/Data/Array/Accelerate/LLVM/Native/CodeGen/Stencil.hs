@@ -57,15 +57,12 @@ mkStencil1
     -> Boundary (IR a)
     -> IRManifest Native aenv (Array sh a)
     -> CodeGen (IROpenAcc Native aenv (Array sh b))
-mkStencil1 n aenv f b1 ir1
+mkStencil1 n aenv f b1 ir1@(IRManifest v1)
   | Just Refl <- matchShapeType (undefined :: DIM2) (undefined :: sh)
-  = mkStencil_2D "stencil1" (Just b1) Nothing aenv f ir1 $
-      \mBoundary aenv f (IRManifest v) arrOut x y -> do
-        let ix = index2D x y
-        i     <- intOfIndex (irArrayShape arrOut) ix
-        sten  <- stencilAccess mBoundary (irArray (aprj v aenv)) ix
-        r     <- app1 f sten
-        writeArray arrOut i r
+  = mkStencil_2D "stencil1" (Just b1) Nothing aenv ir1 $
+      \mB1 ix i -> do
+        sten <- stencilAccess mB1 (irArray (aprj v1 aenv)) ix
+        app1 f sten
   | otherwise
   = defaultStencil1 n aenv f b1 ir1
 
@@ -81,45 +78,31 @@ mkStencil2
     -> Boundary (IR b)
     -> IRManifest Native aenv (Array sh b)
     -> CodeGen (IROpenAcc Native aenv (Array sh c))
-mkStencil2 n aenv f b1 ir1 b2 ir2
+mkStencil2 n aenv f b1 ir1@(IRManifest v1) b2 ir2@(IRManifest v2)
   | Just Refl <- matchShapeType (undefined :: DIM2) (undefined :: sh)
-  = mkStencil_2D "stencil2" (Just b1, Just b2) (Nothing, Nothing) aenv f (ir1, ir2) $
-      \(mB1, mB2) aenv f (IRManifest v1, IRManifest v2) arrOut x y -> do
-        let ix = index2D x y
-        i     <- intOfIndex (irArrayShape arrOut) ix
+  = mkStencil_2D "stencil2" (Just b1, Just b2) (Nothing, Nothing) aenv (ir1, ir2) $
+      \(mB1, mB2) ix i -> do
         sten1 <- stencilAccess mB1 (irArray (aprj v1 aenv)) ix
         sten2 <- stencilAccess mB2 (irArray (aprj v2 aenv)) ix
-        r     <- app2 f sten1 sten2
-        writeArray arrOut i r
+        app2 f sten1 sten2
   --
   | otherwise
   = defaultStencil2 n aenv f b1 ir1 b2 ir2
 
 
-mkStencil_2D 
-  :: Elt e
-     => ShortByteString
-     -> t2
-     -> t2
-     -> Gamma aenv1
-     -> t1
-     -> t
-     -> (t2
-        -> Gamma aenv1
-        -> t1
-        -> t
-        -> IRArray (Array DIM2 e)
-        -> IR Int
-        -> IR Int
-        -> CodeGen ())
-     -> CodeGen (IROpenAcc Native aenv a)
-mkStencil_2D stencilN jBounds nBounds aenv f irs stenElem =
+mkStencil_2D stencilN jBounds nBounds aenv irs stenElem =
   let
       (start, end, borderWidth, borderHeight, width, height, paramGang) = gangParam2D
       (arrOut, paramOut) = mutableArray ("out" :: Name (Array DIM2 b))
       paramEnv           = envParam aenv
       params = paramGang ++ paramOut ++ paramEnv
       unrollN = 4
+      --
+      evalElem bounds x y = do
+        let ix = index2D x y
+        i     <- intOfIndex (irArrayShape arrOut) ix
+        writeArray arrOut i =<< stenElem bounds ix i
+      --
   in
     foldr1 (+++) <$> sequence
       --
@@ -128,9 +111,9 @@ mkStencil_2D stencilN jBounds nBounds aenv f irs stenElem =
             rightx <- sub numType width =<< add numType (int 1) x
             imapFromTo start end $ \y -> do
               -- Left
-              stenElem jBounds aenv f irs arrOut x y
+              evalElem jBounds x      y
               -- Right
-              stenElem jBounds aenv f irs arrOut rightx y
+              evalElem jBounds rightx y
 
           return_
       --
@@ -139,9 +122,9 @@ mkStencil_2D stencilN jBounds nBounds aenv f irs stenElem =
             bottomy <- sub numType height =<< add numType (int 1) y
             imapFromTo start end $ \x -> do
               -- Top
-              stenElem jBounds aenv f irs arrOut x y
+              evalElem jBounds x y
               -- Bottom
-              stenElem jBounds aenv f irs arrOut x bottomy
+              evalElem jBounds x bottomy
 
           return_
       --
@@ -156,11 +139,11 @@ mkStencil_2D stencilN jBounds nBounds aenv f irs stenElem =
             ys <- forM [1..(unrollN-1)] $ \dy -> add numType y (int dy)
             imapFromTo x0 x1 $ \x -> do
               forM_ (y:ys) $ \y_tile -> do
-                stenElem nBounds aenv f irs arrOut x y_tile
+                evalElem nBounds x y_tile
           -- Evaluate the remaining rows singularly
           imapFromTo y' y1 $ \y ->
             imapFromTo x0 x1 $ \x ->
-              stenElem nBounds aenv f irs arrOut x y
+              evalElem nBounds x y
 
           return_
       --
