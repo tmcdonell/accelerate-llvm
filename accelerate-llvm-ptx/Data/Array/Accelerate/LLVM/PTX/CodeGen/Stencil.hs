@@ -16,13 +16,13 @@
 module Data.Array.Accelerate.LLVM.PTX.CodeGen.Stencil
   where
 
+import Control.Monad
+
 -- accelerate
 import Data.Array.Accelerate.AST                                    hiding (stencilAccess)
 import Data.Array.Accelerate.Analysis.Match
-import Data.Array.Accelerate.Analysis.Stencil
-import Data.Array.Accelerate.Array.Sugar                            ( Array, DIM2, Shape, Elt, Z(..), (:.)(..) )
+import Data.Array.Accelerate.Array.Sugar                            ( Array, DIM2, Elt )
 import Data.Array.Accelerate.Type
-import Data.Array.Accelerate.Error
 
 import Data.Array.Accelerate.LLVM.Analysis.Match
 import Data.Array.Accelerate.LLVM.CodeGen.Arithmetic                as A
@@ -38,15 +38,11 @@ import Data.Array.Accelerate.LLVM.CodeGen.Sugar
 
 import Data.Array.Accelerate.LLVM.PTX.Target                        ( PTX )
 import Data.Array.Accelerate.LLVM.PTX.CodeGen.Base
-import Data.Array.Accelerate.LLVM.PTX.CodeGen.Generate
-import Data.Array.Accelerate.LLVM.PTX.CodeGen.Loop
 
 import Data.Array.Accelerate.LLVM.CodeGen.Skeleton
 
 import LLVM.AST.Type.Name
 import qualified LLVM.AST.Global                                    as LLVM
-
-import Control.Applicative
 
 
 mkStencil
@@ -144,12 +140,12 @@ mkStencil2D
     -> Boundary (IR a)
     -> IRManifest PTX aenv (Array DIM2 a)
     -> CodeGen (IROpenAcc PTX aenv (Array DIM2 b))
-mkStencil2D ptx aenv f boundary ir =
+mkStencil2D ptx aenv f boundary ir1 =
   let
       (y0,y1,x0,x1, paramGang) = gangParam2D
   in foldr1 (+++) <$> sequence
-       [ runRegion "stencil2DMiddle" (y0, x0) (y1, x1) paramGang ptx aenv f  Nothing        ir
-       , runRegion "stencil2DEdge"   (y0, x0) (y1, x1) paramGang ptx aenv f (Just boundary) ir
+       [ runRegion "stencil2DMiddle" (y0, x0) (y1, x1) paramGang ptx aenv f  Nothing        ir1
+       , runRegion "stencil2DEdge"   (y0, x0) (y1, x1) paramGang ptx aenv f (Just boundary) ir1
        ]
 
 
@@ -165,7 +161,7 @@ runRegion
     -> Maybe (Boundary (IR a))
     -> IRManifest PTX aenv (Array DIM2 a)
     -> CodeGen (IROpenAcc PTX aenv (Array DIM2 b))
-runRegion label (starty, startx) (y1, x1) paramGang ptx aenv f mBoundary ir@(IRManifest v) =
+runRegion label (starty, startx) (y1, x1) paramGang ptx aenv f mBoundary ir1 =
   let
       (arrOut, paramOut)       = mutableArray ("out" :: Name (Array DIM2 b))
       paramEnv                 = envParam aenv
@@ -185,25 +181,11 @@ runRegion label (starty, startx) (y1, x1) paramGang ptx aenv f mBoundary ir@(IRM
     --
     imapFromStepTo y0 step4y yend $ \y -> do
       y_0 <- A.fromIntegral integralType numType y
-      y_1 <- add numType y_0 (int 1)
-      y_2 <- add numType y_0 (int 2)
-      y_3 <- add numType y_0 (int 3)
+      ys  <- forM [1..3] $ \dy -> add numType y_0 (int dy)
       imapFromStepTo x0 stepx x1 $ \x -> do
         x' <- A.fromIntegral integralType numType x
-        let ix = index2D x' y_0
-        i0 <- intOfIndex (irArrayShape arrOut) ix
-        i1 <- intOfIndex (irArrayShape arrOut) (index2D x' y_1)
-        i2 <- intOfIndex (irArrayShape arrOut) (index2D x' y_2)
-        i3 <- intOfIndex (irArrayShape arrOut) (index2D x' y_3)
-        (s0, s1, s2, s3) <- stencilAccesses mBoundary (irArray (aprj v aenv)) ix
-        r0 <- app1 f s0
-        r1 <- app1 f s1
-        r2 <- app1 f s2
-        r3 <- app1 f s3
-        writeArray arrOut i0 r0
-        writeArray arrOut i1 r1
-        writeArray arrOut i2 r2
-        writeArray arrOut i3 r3
+        forM_ (y_0:ys) $ \y_tile -> do
+          stencilElement mBoundary aenv f ir1 arrOut x' y_tile
     -- Do the last few rows that aren't in the groups of 4.
     yrange    <- sub numType y1 starty
     remainder <- A.rem integralType yrange (int32 4)
@@ -213,7 +195,7 @@ runRegion label (starty, startx) (y1, x1) paramGang ptx aenv f mBoundary ir@(IRM
       y' <- A.fromIntegral integralType numType y
       imapFromStepTo x0 stepx x1 $ \x -> do
         x' <- A.fromIntegral integralType numType x
-        stencilElement mBoundary aenv f ir arrOut x' y'
+        stencilElement mBoundary aenv f ir1 arrOut x' y'
     --
     return_
 
