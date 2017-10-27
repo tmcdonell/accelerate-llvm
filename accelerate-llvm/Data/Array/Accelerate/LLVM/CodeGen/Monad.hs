@@ -114,7 +114,7 @@ runLLVM
     :: forall arch aenv a. (Target arch, Intrinsic arch)
     => CodeGen (IROpenAcc arch aenv a)
     -> Module arch aenv a
-runLLVM  ll =
+runLLVM ll =
   let
       initialState      = CodeGenState
                             { blockChain        = initBlockChain
@@ -259,10 +259,17 @@ instr :: Instruction a -> CodeGen (IR a)
 instr ins = ir (typeOf ins) <$> instr' ins
 
 instr' :: Instruction a -> CodeGen (Operand a)
-instr' ins = do
-  name <- freshName
-  instr_ $ downcast (name := ins)
-  return $ LocalReference (typeOf ins) name
+instr' ins =
+  -- LLVM-5 does not allow instructions of type void to have a name.
+  case typeOf ins of
+    VoidType -> do
+      do_ ins
+      return $ LocalReference VoidType (Name B.empty)
+    --
+    ty -> do
+      name <- freshName
+      instr_ $ downcast (name := ins)
+      return $ LocalReference ty name
 
 -- | Execute an unnamed instruction
 --
@@ -408,7 +415,7 @@ createMetadata md = build (HashMap.toList md) (Seq.empty, Seq.empty)
       in  build xs (k Seq.|> k', d Seq.>< d')
 
     meta :: Int                                         -- number of metadata node definitions so far
-         -> (ShortByteString, Seq [Maybe Metadata])              -- current assoc of the metadata map
+         -> (ShortByteString, Seq [Maybe Metadata])     -- current assoc of the metadata map
          -> (LLVM.Definition, Seq LLVM.Definition)
     meta n (key, vals)
       = let node i      = LLVM.MetadataNodeID (fromIntegral (i+n))

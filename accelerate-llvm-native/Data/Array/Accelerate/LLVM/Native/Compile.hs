@@ -19,7 +19,7 @@ module Data.Array.Accelerate.LLVM.Native.Compile (
 
 ) where
 
--- llvm-general
+-- llvm-hs
 import LLVM.AST                                                     hiding ( Module )
 import LLVM.Module                                                  as LLVM hiding ( Module )
 import LLVM.Context
@@ -44,16 +44,20 @@ import qualified Data.Array.Accelerate.LLVM.Native.Debug            as Debug
 -- standard library
 import Control.Monad.State
 import Data.ByteString                                              ( ByteString )
+import Data.ByteString.Short                                        ( ShortByteString )
 import Data.Maybe
 import System.Directory
 import System.IO.Unsafe
+import Text.Printf
 import qualified Data.ByteString                                    as B
 import qualified Data.ByteString.Char8                              as B8
 import qualified Data.ByteString.Short                              as BS
+import qualified Data.Map                                           as Map
 
 
 instance Compile Native where
-  data ObjectR Native = ObjectR { objId   :: {-# UNPACK #-} !Int
+  data ObjectR Native = ObjectR { objId   :: {-# UNPACK #-} !UID
+                                , objSyms :: {- LAZY -} [ShortByteString]
                                 , objData :: {- LAZY -} ByteString
                                 }
   compileForTarget    = compile
@@ -70,9 +74,10 @@ compile acc aenv = do
 
   -- Generate code for this Acc operation
   --
-  let Module ast _  = llvmOfOpenAcc target acc aenv
+  let Module ast md = llvmOfOpenAcc target uid acc aenv
       triple        = fromMaybe BS.empty (moduleTargetTriple ast)
       datalayout    = moduleDataLayout ast
+      nms           = [ f | Name f <- Map.keys md ]
 
   -- Lower the generated LLVM and produce an object file.
   --
@@ -82,9 +87,12 @@ compile acc aenv = do
   --
   obj <- liftIO . unsafeInterleaveIO $ do
     exists <- doesFileExist cacheFile
-    recomp <- Debug.queryFlag Debug.force_recomp
-    if exists && not (fromMaybe False recomp)
-      then B.readFile cacheFile
+    recomp <- if Debug.debuggingIsEnabled then Debug.getFlag Debug.force_recomp else return False
+    if exists && not recomp
+      then do
+        Debug.traceIO Debug.dump_cc (printf "cc: found cached object code %016x" uid)
+        B.readFile cacheFile
+
       else
         withContext                  $ \ctx     ->
         withModuleFromAST ctx ast    $ \mdl     ->
@@ -100,5 +108,5 @@ compile acc aenv = do
           B.writeFile cacheFile obj
           return obj
 
-  return $! ObjectR uid obj
+  return $! ObjectR uid nms obj
 

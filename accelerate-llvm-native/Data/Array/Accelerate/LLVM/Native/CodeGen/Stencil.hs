@@ -19,7 +19,7 @@ module Data.Array.Accelerate.LLVM.Native.CodeGen.Stencil
 import Control.Monad
 
 -- accelerate
-import Data.Array.Accelerate.AST                                    hiding (stencilAccess)
+import Data.Array.Accelerate.AST
 import Data.Array.Accelerate.Analysis.Match
 import Data.Array.Accelerate.Array.Sugar                            ( Array, DIM2, Elt )
 import Data.Array.Accelerate.Type
@@ -33,8 +33,9 @@ import Data.Array.Accelerate.LLVM.CodeGen.Exp
 import Data.Array.Accelerate.LLVM.CodeGen.IR
 import Data.Array.Accelerate.LLVM.CodeGen.Loop
 import Data.Array.Accelerate.LLVM.CodeGen.Monad
-import Data.Array.Accelerate.LLVM.CodeGen.Stencil -- stencilAccess
+import Data.Array.Accelerate.LLVM.CodeGen.Stencil
 import Data.Array.Accelerate.LLVM.CodeGen.Sugar
+import Data.Array.Accelerate.LLVM.Compile.Cache
 
 import Data.Array.Accelerate.LLVM.Native.Target                     ( Native )
 import Data.Array.Accelerate.LLVM.Native.CodeGen.Base
@@ -45,60 +46,62 @@ import Data.Array.Accelerate.LLVM.CodeGen.Skeleton
 import Data.ByteString.Short
 import Data.Monoid
 
+import LLVM.AST.Type.Name
 import qualified LLVM.AST.Global                                    as LLVM
-import           LLVM.AST.Type.Name
 
 
 mkStencil1
-    :: forall aenv stencil a b sh. (Stencil sh a stencil, Elt b, Skeleton Native)
+    :: forall aenv stencil a b sh. (Skeleton Native, Stencil sh a stencil, Elt b)
     => Native
+    -> UID
     -> Gamma aenv
     -> IRFun1 Native aenv (stencil -> b)
-    -> Boundary (IR a)
+    -> IRBoundary Native aenv (Array sh a)
     -> IRManifest Native aenv (Array sh a)
     -> CodeGen (IROpenAcc Native aenv (Array sh b))
-mkStencil1 n aenv f b1 ir1@(IRManifest v1)
+mkStencil1 arch uid aenv f b1 ir1@(IRManifest v1)
   | Just Refl <- matchShapeType (undefined :: DIM2) (undefined :: sh)
-  = mkStencil_2D "stencil1" (Just b1) Nothing aenv $
+  = mkStencil_2D uid "stencil1" (Just b1) Nothing aenv $
       \mB1 ix -> do
         sten <- stencilAccess mB1 (irArray (aprj v1 aenv)) ix
         app1 f sten
   | otherwise
-  = defaultStencil1 n aenv f b1 ir1
+  = defaultStencil1 arch uid aenv f b1 ir1
 
 
 mkStencil2
-    :: forall aenv stencil1 stencil2 a b c sh.
-       (Stencil sh a stencil1, Stencil sh b stencil2, Elt c, Skeleton Native)
+    :: forall aenv stencil1 stencil2 a b c sh. (Skeleton Native, Stencil sh a stencil1, Stencil sh b stencil2, Elt c)
     => Native
+    -> UID
     -> Gamma aenv
     -> IRFun2 Native aenv (stencil1 -> stencil2 -> c)
-    -> Boundary (IR a)
+    -> IRBoundary Native aenv (Array sh a)
     -> IRManifest Native aenv (Array sh a)
-    -> Boundary (IR b)
+    -> IRBoundary Native aenv (Array sh b)
     -> IRManifest Native aenv (Array sh b)
     -> CodeGen (IROpenAcc Native aenv (Array sh c))
-mkStencil2 n aenv f b1 ir1@(IRManifest v1) b2 ir2@(IRManifest v2)
+mkStencil2 arch uid aenv f b1 ir1@(IRManifest v1) b2 ir2@(IRManifest v2)
   | Just Refl <- matchShapeType (undefined :: DIM2) (undefined :: sh)
-  = mkStencil_2D "stencil2" (Just b1, Just b2) (Nothing, Nothing) aenv $
+  = mkStencil_2D uid "stencil2" (Just b1, Just b2) (Nothing, Nothing) aenv $
       \(mB1, mB2) ix -> do
         sten1 <- stencilAccess mB1 (irArray (aprj v1 aenv)) ix
         sten2 <- stencilAccess mB2 (irArray (aprj v2 aenv)) ix
         app2 f sten1 sten2
   --
   | otherwise
-  = defaultStencil2 n aenv f b1 ir1 b2 ir2
+  = defaultStencil2 arch uid aenv f b1 ir1 b2 ir2
 
 
 mkStencil_2D
   :: Elt e
-  => ShortByteString
+  => UID
+  -> ShortByteString
   -> bounds
   -> bounds
   -> Gamma aenv1
   -> (bounds -> IR DIM2 -> CodeGen (IR e))
   -> CodeGen (IROpenAcc Native aenv a)
-mkStencil_2D stencilN jBounds nBounds aenv stenElem =
+mkStencil_2D uid stencilN jBounds nBounds aenv stenElem =
   let
       (start, end, borderWidth, borderHeight, width, height, paramGang) = gangParam2D
       (arrOut, paramOut) = mutableArray ("out" :: Name (Array DIM2 b))
@@ -113,7 +116,7 @@ mkStencil_2D stencilN jBounds nBounds aenv stenElem =
   in
     foldr1 (+++) <$> sequence
       --
-      [ makeOpenAcc (Label $ stencilN <> "_2D_LeftRight") params $ do
+      [ makeOpenAcc uid (Label $ stencilN <> "_2D_LeftRight") params $ do
           imapFromTo (int 0) borderWidth $ \x -> do
             rightx <- sub numType width =<< add numType (int 1) x
             imapFromTo start end $ \y -> do
@@ -124,7 +127,7 @@ mkStencil_2D stencilN jBounds nBounds aenv stenElem =
 
           return_
       --
-      , makeOpenAcc (Label $ stencilN <> "_2D_TopBottom") params $ do
+      , makeOpenAcc uid (Label $ stencilN <> "_2D_TopBottom") params $ do
           imapFromTo (int 0) borderHeight $ \y -> do
             bottomy <- sub numType height =<< add numType (int 1) y
             imapFromTo start end $ \x -> do
@@ -135,7 +138,7 @@ mkStencil_2D stencilN jBounds nBounds aenv stenElem =
 
           return_
       --
-      , makeOpenAcc (Label $ stencilN <> "_2D_Middle") params $ do
+      , makeOpenAcc uid (Label $ stencilN <> "_2D_Middle") params $ do
           let (y0, y1, x0) = (start, end, borderWidth)
           x1        <- sub numType width x0
           yrange    <- sub numType y1 y0

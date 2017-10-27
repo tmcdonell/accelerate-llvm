@@ -19,7 +19,7 @@ module Data.Array.Accelerate.LLVM.PTX.CodeGen.Stencil
 import Control.Monad
 
 -- accelerate
-import Data.Array.Accelerate.AST                                    hiding (stencilAccess)
+import Data.Array.Accelerate.AST
 import Data.Array.Accelerate.Analysis.Match
 import Data.Array.Accelerate.Array.Sugar                            ( Array, DIM2, Elt )
 import Data.Array.Accelerate.Type
@@ -33,8 +33,9 @@ import Data.Array.Accelerate.LLVM.CodeGen.Exp
 import Data.Array.Accelerate.LLVM.CodeGen.IR
 import Data.Array.Accelerate.LLVM.CodeGen.Loop
 import Data.Array.Accelerate.LLVM.CodeGen.Monad
-import Data.Array.Accelerate.LLVM.CodeGen.Stencil -- stencilAccess
+import Data.Array.Accelerate.LLVM.CodeGen.Stencil
 import Data.Array.Accelerate.LLVM.CodeGen.Sugar
+import Data.Array.Accelerate.LLVM.Compile.Cache
 
 import Data.Array.Accelerate.LLVM.PTX.Target                        ( PTX )
 import Data.Array.Accelerate.LLVM.PTX.CodeGen.Base
@@ -48,17 +49,18 @@ import qualified LLVM.AST.Global                                    as LLVM
 mkStencil
     :: forall aenv stencil a b sh. (Stencil sh a stencil, Elt b, Skeleton PTX)
     => PTX
+    -> UID
     -> Gamma aenv
     -> IRFun1 PTX aenv (stencil -> b)
-    -> Boundary (IR a)
+    -> IRBoundary PTX aenv (Array sh a)
     -> IRManifest PTX aenv (Array sh a)
     -> CodeGen (IROpenAcc PTX aenv (Array sh b))
-mkStencil
+mkStencil ptx uid
   | Just Refl <- matchShapeType (undefined :: DIM2) (undefined :: sh)
-  = mkStencil2D
+  = mkStencil2D ptx
 
   | otherwise
-  = defaultStencil1
+  = defaultStencil1 ptx uid
 
 
 int32 :: Int -> IR Int32
@@ -116,7 +118,7 @@ imapFromTo2D startx endx starty endy body = do
 
 stencilElement
     :: forall aenv stencil a b. (Stencil DIM2 a stencil, Elt b, Skeleton PTX)
-    => Maybe (Boundary (IR a))
+    => Maybe (IRBoundary PTX aenv (Array DIM2 a))
     -> Gamma aenv
     -> IRFun1 PTX aenv (stencil -> b)
     -> IRManifest PTX aenv (Array DIM2 a)
@@ -137,7 +139,7 @@ mkStencil2D
     => PTX
     -> Gamma aenv
     -> IRFun1 PTX aenv (stencil -> b)
-    -> Boundary (IR a)
+    -> IRBoundary PTX aenv (Array DIM2 a)
     -> IRManifest PTX aenv (Array DIM2 a)
     -> CodeGen (IROpenAcc PTX aenv (Array DIM2 b))
 mkStencil2D ptx aenv f boundary ir1 =
@@ -158,7 +160,7 @@ runRegion
     -> PTX
     -> Gamma aenv
     -> IRFun1 PTX aenv (stencil -> b)
-    -> Maybe (Boundary (IR a))
+    -> Maybe (IRBoundary PTX aenv (Array DIM2 a))
     -> IRManifest PTX aenv (Array DIM2 a)
     -> CodeGen (IROpenAcc PTX aenv (Array DIM2 b))
 runRegion label (starty, startx) (y1, x1) paramGang ptx aenv f mBoundary ir1 =

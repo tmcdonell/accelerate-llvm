@@ -173,8 +173,8 @@ compileOpenAcc = traverseAcc
         Scanr' f z a                -> build =<< liftA3 scanr'        <$> travF f <*> travE z <*> travD a
         Scanr1 f a                  -> build =<< liftA2 scanr1        <$> travF f <*> travD a
         Permute f d g a             -> build =<< liftA4 permute       <$> travF f <*> travA d <*> travF g <*> travD a
-        Stencil f _ a               -> build =<< liftA2 stencil1      <$> travF f <*> travM a
-        Stencil2 f _ a _ b          -> build =<< liftA3 stencil2      <$> travF f <*> travM a <*> travM b
+        Stencil f x a               -> build =<< liftA3 stencil1      <$> travF f <*> travB x <*> travM a
+        Stencil2 f x a y b          -> build =<< liftA5 stencil2      <$> travF f <*> travB x <*> travM a <*> travB y <*> travM b
 
         -- Removed by fusion
         Replicate{}                 -> fusionError
@@ -200,16 +200,19 @@ compileOpenAcc = traverseAcc
 
         stencil1 :: forall acc sh stencil a b. (Stencil sh a stencil, Elt b)
                  => CompiledFun arch aenv (stencil -> b)
+                 -> PreBoundary (CompiledOpenAcc arch) aenv (Array sh a)
                  -> Idx aenv (Array sh a)
                  -> AST.PreOpenAccSkeleton acc aenv (Array sh b)
-        stencil1 _ a = AST.Stencil1 (stencil :: StencilR sh a stencil) a
+        stencil1 _ _ a      = AST.Stencil1 (stencil :: StencilR sh a stencil) a
 
         stencil2 :: forall acc sh stencil1 stencil2 a b c. (Stencil sh a stencil1, Stencil sh b stencil2, Elt c)
                  => CompiledFun arch aenv (stencil1 -> stencil2 -> c)
+                 -> PreBoundary (CompiledOpenAcc arch) aenv (Array sh a)
                  -> Idx aenv (Array sh a)
+                 -> PreBoundary (CompiledOpenAcc arch) aenv (Array sh b)
                  -> Idx aenv (Array sh b)
                  -> AST.PreOpenAccSkeleton acc aenv (Array sh c)
-        stencil2 _ a b = AST.Stencil2 (stencil :: StencilR sh a stencil1) (stencil :: StencilR sh b stencil2) a b
+        stencil2 _ _ a _ b  = AST.Stencil2 (stencil :: StencilR sh a stencil1) (stencil :: StencilR sh b stencil2) a b
 
         fusionError :: error
         fusionError = $internalError "execute" $ "unexpected fusible material: " ++ showPreAccOp pacc
@@ -242,6 +245,14 @@ compileOpenAcc = traverseAcc
               -> LLVM arch (IntMap (Idx' aenv), CompiledOpenFun arch env aenv t)
         travF (Body b)  = liftA Body <$> travE b
         travF (Lam  f)  = liftA Lam  <$> travF f
+
+        travB :: PreBoundary DelayedOpenAcc aenv t
+              -> LLVM arch (IntMap (Idx' aenv), PreBoundary (CompiledOpenAcc arch) aenv t)
+        travB Clamp        = return $ pure Clamp
+        travB Mirror       = return $ pure Mirror
+        travB Wrap         = return $ pure Wrap
+        travB (Constant c) = return $ pure (Constant c)
+        travB (Function f) = liftA Function <$> travF f
 
         build :: (IntMap (Idx' aenv), AST.PreOpenAccSkeleton (CompiledOpenAcc arch) aenv arrs)
               -> LLVM arch (CompiledOpenAcc arch aenv arrs)
@@ -375,4 +386,7 @@ compileOpenAcc = traverseAcc
 --
 liftA4 :: Applicative f => (a -> b -> c -> d -> e) -> f a -> f b -> f c -> f d -> f e
 liftA4 f a b c d = f <$> a <*> b <*> c <*> d
+
+liftA5 :: Applicative f => (a -> b -> c -> d -> e -> g) -> f a -> f b -> f c -> f d -> f e -> f g
+liftA5 f a b c d g = f <$> a <*> b <*> c <*> d <*> g
 

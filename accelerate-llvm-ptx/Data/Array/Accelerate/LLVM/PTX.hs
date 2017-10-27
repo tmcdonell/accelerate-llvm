@@ -38,6 +38,10 @@ module Data.Array.Accelerate.LLVM.PTX (
   run1Async, run1AsyncWith,
   runNAsync, runNAsyncWith,
 
+  -- * Ahead-of-time compilation
+  runQ, runQWith,
+  runQAsync, runQAsyncWith,
+
   -- * Execution targets
   PTX, createTargetForDevice, createTargetFromContext,
 
@@ -58,6 +62,7 @@ import Data.Array.Accelerate.Trafo
 import Data.Array.Accelerate.LLVM.Execute.Async                     ( AsyncR(..) )
 import Data.Array.Accelerate.LLVM.Execute.Environment               ( AvalR(..) )
 import Data.Array.Accelerate.LLVM.PTX.Compile
+import Data.Array.Accelerate.LLVM.PTX.Embed                         ( embedOpenAcc )
 import Data.Array.Accelerate.LLVM.PTX.Execute
 import Data.Array.Accelerate.LLVM.PTX.Execute.Environment           ( Aval )
 import Data.Array.Accelerate.LLVM.PTX.Link
@@ -71,10 +76,13 @@ import qualified Data.Array.Accelerate.LLVM.PTX.Execute.Async       as E
 import Foreign.CUDA.Driver                                          as CUDA ( CUDAException, mallocHostForeignPtr )
 
 -- standard library
+import Data.Typeable
 import Control.Exception
 import Control.Monad.Trans
 import System.IO.Unsafe
 import Text.Printf
+import qualified Language.Haskell.TH                                as TH
+import qualified Language.Haskell.TH.Syntax                         as TH
 
 
 -- Accelerate: LLVM backend for NVIDIA GPUs
@@ -88,7 +96,7 @@ import Text.Printf
 -- array. Evaluating the result of 'run' to WHNF will initiate the computation,
 -- but does not copy the results back from the device.
 --
--- Note that it is recommended that you use 'run1' whenever possible.
+-- /NOTE:/ it is recommended to use 'runN' or 'runQ' whenever possible.
 --
 run :: Arrays a => Acc a -> a
 run = runWith defaultTarget
@@ -190,6 +198,9 @@ run1With = runNWith
 --
 -- See the programs in the 'accelerate-examples' package for examples.
 --
+-- See also 'runQ', which compiles the Accelerate program at _Haskell_ compile
+-- time, thus eliminating the runtime overhead altogether.
+--
 runN :: Afunction f => f -> AfunctionR f
 runN = runNWith defaultTarget
 
@@ -282,6 +293,122 @@ streamWith :: (Arrays a, Arrays b) => PTX -> (Acc a -> Acc b) -> [a] -> [b]
 streamWith target f arrs = map go arrs
   where
     !go = run1With target f
+
+
+-- | Ahead-of-time compilation for an embedded array program.
+--
+-- This function will generate, compile, and link into the final executable,
+-- code to execute the given Accelerate computation /at Haskell compile time/.
+-- This eliminates any runtime overhead associated with the other @run*@
+-- operations. The generated code will be compiled for the current (default) GPU
+-- architecture.
+--
+-- Since the Accelerate program will be generated at Haskell compile time,
+-- construction of the Accelerate program, in particular via meta-programming,
+-- will be limited to operations available to that phase. Also note that any
+-- arrays which are embedded into the program via 'Data.Array.Accelerate.use'
+-- will be stored as part of the final executable.
+--
+-- Usage of this function in your program is similar to that of 'runN'. First,
+-- express your Accelerate program as a function of array terms:
+--
+-- > f :: (Arrays a, Arrays b, ... Arrays c) => Acc a -> Acc b -> ... -> Acc c
+--
+-- This function then returns a compiled version of @f@ as a Template Haskell
+-- splice, to be added into your program at Haskell compile time:
+--
+-- > {-# LANGUAGE TemplateHaskell #-}
+-- >
+-- > f' :: a -> b -> ... -> c
+-- > f' = $( runQ f )
+--
+-- Note that at the splice point the usage of @f@ must monomorphic; i.e. the
+-- types @a@, @b@ and @c@ must be at some known concrete type.
+--
+-- See the <https://github.com/tmcdonell/lulesh-accelerate lulesh-accelerate>
+-- project for an example.
+--
+-- [/Note:/]
+--
+-- Due to <https://ghc.haskell.org/trac/ghc/ticket/13587 GHC#13587>, this
+-- currently must be as an /untyped/ splice.
+--
+-- The correct type of this function is similar to that of 'runN':
+--
+-- > runQ :: Afunction f => f -> Q (TExp (AfunctionR f))
+--
+-- @since 1.1.0.0
+--
+runQ :: Afunction f => f -> TH.ExpQ
+runQ = runQ' [| unsafePerformIO |] [| defaultTarget |]
+
+-- | Ahead-of-time analogue of 'runNWith'. See 'runQ' for more information.
+--
+-- /NOTE:/ The supplied (at runtime) target must be compatible with the
+-- architecture that this function was compiled for (the 'defaultTarget' of the
+-- compiling machine). Running on a device with the same compute capability is
+-- best, but this should also be forward compatible to newer architectures.
+--
+-- The correct type of this function is:
+--
+-- > runQWith :: Afunction f => f -> Q (TExp (PTX -> AfunctionR f))
+--
+-- @since 1.1.0.0
+--
+runQWith :: Afunction f => f -> TH.ExpQ
+runQWith f = do
+  target <- TH.newName "target"
+  TH.lamE [TH.varP target] (runQ' [| unsafePerformIO |] (TH.varE target) f)
+
+
+-- | Ahead-of-time analogue of 'runNAsync'. See 'runQ' for more information.
+--
+-- The correct type of this function is:
+--
+-- > runQAsync :: (Afunction f, RunAsync r, AfunctionR f ~ RunAsyncR r) => f -> Q (TExp r)
+--
+-- @since 1.1.0.0
+--
+runQAsync :: Afunction f => f -> TH.ExpQ
+runQAsync = runQ' [| async |] [| defaultTarget |]
+
+-- | Ahead-of-time analogue of 'runNAsyncWith'. See 'runQWith' for more information.
+--
+-- The correct type of this function is:
+--
+-- > runQAsyncWith :: (Afunction f, RunAsync r, AfunctionR f ~ RunAsyncR r) => f -> Q (TExp (PTX -> r))
+--
+-- @since 1.1.0.0
+--
+runQAsyncWith :: Afunction f => f -> TH.ExpQ
+runQAsyncWith f = do
+  target <- TH.newName "target"
+  TH.lamE [TH.varP target] (runQ' [| async |] (TH.varE target) f)
+
+
+runQ' :: Afunction f => TH.ExpQ -> TH.ExpQ -> f -> TH.ExpQ
+runQ' using target f = do
+  afun  <- let acc = convertAfunWith config f
+           in  TH.runIO $ do
+                 dumpGraph acc
+                 evalPTX defaultTarget $
+                   phase "compile" (compileAfun acc) >>= dumpStats
+  let
+      go :: Typeable aenv => CompiledOpenAfun PTX aenv t -> [TH.PatQ] -> [TH.ExpQ] -> [TH.StmtQ] -> TH.ExpQ
+      go (Alam lam) xs as stmts = do
+        x <- TH.newName "x" -- lambda bound variable
+        a <- TH.newName "a" -- local array name
+        s <- TH.bindS (TH.conP 'AsyncR [TH.wildP, TH.varP a]) [| E.async (AD.useRemoteAsync $(TH.varE x)) |]
+        go lam (TH.varP x : xs) (TH.varE a : as) (return s : stmts)
+
+      go (Abody body) xs as stmts =
+        let aenv = foldr (\a gamma -> [| $gamma `Apush` $a |] ) [| Aempty |] as
+            eval = TH.noBindS [| AD.copyToHostLazy =<< E.get =<< E.async (executeOpenAcc $(TH.unTypeQ (embedOpenAcc defaultTarget body)) $aenv) |]
+        in
+        TH.lamE (reverse xs) [| $using . phase "execute" . evalPTX $target $
+                                  $(TH.doE (reverse (eval : stmts))) |]
+  --
+  go afun [] [] []
 
 
 -- How the Accelerate program should be evaluated.

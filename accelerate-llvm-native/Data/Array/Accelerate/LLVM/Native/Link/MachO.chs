@@ -91,12 +91,17 @@ loadSegments obj symtab lcs = do
   segs  <- V.mapM (loadSegment obj symtab) lcs
 
   -- Resolve the external symbols defined in the sections of this object into
-  -- function pointers
+  -- function pointers.
+  --
+  -- Note that in order to support ahead-of-time compilation, the generated
+  -- functions are given unique names by appending with an underscore followed
+  -- by a 16-digit unique ID. The execution phase doesn't need to know about
+  -- this however, so un-mangle the name to the basic "map", "fold", etc.
   --
   let extern Symbol{..}   = sym_extern && sym_segment > 0
       resolve Symbol{..}  =
         let Segment _ fp  = segs V.! (fromIntegral (sym_segment-1))
-            name          = BS.toShort sym_name
+            name          = BS.toShort (B8.take (B8.length sym_name - 17) sym_name)
             addr          = castPtrToFunPtr (unsafeForeignPtrToPtr fp `plusPtr` fromIntegral sym_value)
         in
         (name, addr)
@@ -585,44 +590,42 @@ readLoadSymbolTable p@Peek{..} obj = do
 
 readDynamicSymbolTable :: Peek -> ByteString -> Get ()
 readDynamicSymbolTable Peek{..} _obj = do
-#ifdef ACCELERATE_DEBUG
-  ilocalsym     <- getWord32
-  nlocalsym     <- getWord32
-  iextdefsym    <- getWord32
-  nextdefsym    <- getWord32
-  iundefsym     <- getWord32
-  nundefsym     <- getWord32
-  skip 4        -- tocoff
-  ntoc          <- getWord32
-  skip 4        -- modtaboff
-  nmodtab       <- getWord32
-  skip 12       -- extrefsymoff, nextrefsyms, indirectsymoff,
-  nindirectsyms <- getWord32
-  skip 16       -- extreloff, nextrel, locreloff, nlocrel,
-  message "LC_DYSYMTAB:"
-  --
-  if nlocalsym > 0
-    then message (printf "  %d local symbols at index %d" nlocalsym ilocalsym)
-    else message (printf "  No local symbols")
-  if nextdefsym > 0
-    then message (printf "  %d external symbols at index %d" nextdefsym iextdefsym)
-    else message (printf "  No external symbols")
-  if nundefsym > 0
-    then message (printf "  %d undefined symbols at index %d" nundefsym iundefsym)
-    else message (printf "  No undefined symbols")
-  if ntoc > 0
-    then message (printf "  %d table of contents entries" ntoc)
-    else message (printf "  No table of contents")
-  if nmodtab > 0
-    then message (printf "  %d module table entries" nmodtab)
-    else message (printf "  No module table")
-  if nindirectsyms > 0
-    then message (printf "  %d indirect symbols" nindirectsyms)
-    else message (printf "  No indirect symbols")
-#else
-  skip ({#sizeof dysymtab_command#} - 8)
-#endif
-  return ()
+  if not Debug.debuggingIsEnabled
+    then skip ({#sizeof dysymtab_command#} - 8)
+    else do
+      ilocalsym     <- getWord32
+      nlocalsym     <- getWord32
+      iextdefsym    <- getWord32
+      nextdefsym    <- getWord32
+      iundefsym     <- getWord32
+      nundefsym     <- getWord32
+      skip 4        -- tocoff
+      ntoc          <- getWord32
+      skip 4        -- modtaboff
+      nmodtab       <- getWord32
+      skip 12       -- extrefsymoff, nextrefsyms, indirectsymoff,
+      nindirectsyms <- getWord32
+      skip 16       -- extreloff, nextrel, locreloff, nlocrel,
+      message "LC_DYSYMTAB:"
+      --
+      if nlocalsym > 0
+        then message (printf "  %d local symbols at index %d" nlocalsym ilocalsym)
+        else message (printf "  No local symbols")
+      if nextdefsym > 0
+        then message (printf "  %d external symbols at index %d" nextdefsym iextdefsym)
+        else message (printf "  No external symbols")
+      if nundefsym > 0
+        then message (printf "  %d undefined symbols at index %d" nundefsym iundefsym)
+        else message (printf "  No undefined symbols")
+      if ntoc > 0
+        then message (printf "  %d table of contents entries" ntoc)
+        else message (printf "  No table of contents")
+      if nmodtab > 0
+        then message (printf "  %d module table entries" nmodtab)
+        else message (printf "  No module table")
+      if nindirectsyms > 0
+        then message (printf "  %d indirect symbols" nindirectsyms)
+        else message (printf "  No indirect symbols")
 
 loadSymbol :: Peek -> ByteString -> Get Symbol
 loadSymbol Peek{..} strtab = do
