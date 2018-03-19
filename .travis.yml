@@ -137,7 +137,7 @@ script:
   - travis_retry stack build accelerate-llvm-ptx    --fast --no-terminal --test --no-run-tests ${HADDOCK}
 
   # Run test suite(s)
-  - stack test accelerate-llvm-native --test-arguments='--hedgehog-tests 50'
+  - env ACCELERATE_LLVM_NATIVE_THREADS=2 stack test accelerate-llvm-native --test-arguments='--hedgehog-tests 50 +RTS -N2 -RTS'
 
 after_success:
   - source .travis/update-accelerate-buildbot.sh
