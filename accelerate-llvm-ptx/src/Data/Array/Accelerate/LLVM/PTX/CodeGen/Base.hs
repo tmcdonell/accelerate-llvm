@@ -164,7 +164,7 @@ i32 :: Int -> IR Int32
 i32 = lift . P.fromIntegral
 
 
--- | The size of the thread grid, for one-dimensional grids
+-- | The size of the thread grid, in each dimension
 --
 -- > gridDim.x * blockDim.x
 --
@@ -184,7 +184,7 @@ gridSizeBy gridDim blockDim = do
   mul numType ncta ntid
 
 
--- | The global thread index, for one-dimensional grids
+-- | The global thread index, along each dimension
 --
 -- > blockDim.x * blockIdx.x + threadIdx.x
 --
