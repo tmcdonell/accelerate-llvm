@@ -26,8 +26,8 @@ module Data.Array.Accelerate.LLVM.PTX.CodeGen.Base (
   threadIdx_x, threadIdx_y, threadIdx_z,
   blockIdx_x,  blockIdx_y,  blockIdx_z,
 
-  gridSize, globalThreadIdx,
-  gangParam,
+  gridSize_x, gridSize_y, gridSize_z,
+  globalThreadIdx_x, globalThreadIdx_y, globalThreadIdx_z,
 
   -- Other intrinsics
   laneId, warpId,
@@ -45,7 +45,11 @@ module Data.Array.Accelerate.LLVM.PTX.CodeGen.Base (
 
   -- Kernel definitions
   (+++),
+  gangParam, gangParamFromTo,
   makeOpenAcc, makeOpenAccWith,
+
+  -- miscellaneous
+  module Data.Proxy,
 
 ) where
 
@@ -68,7 +72,7 @@ import qualified LLVM.AST.Type                                      as LLVM
 
 -- accelerate
 import Data.Array.Accelerate.Analysis.Type
-import Data.Array.Accelerate.Array.Sugar                            ( Elt, Vector, eltType )
+import Data.Array.Accelerate.Array.Sugar                            ( Shape, Elt, Vector, eltType )
 import Data.Array.Accelerate.Error
 
 import Data.Array.Accelerate.LLVM.CodeGen.Arithmetic                as A
@@ -89,6 +93,7 @@ import qualified Foreign.CUDA.Analysis                              as CUDA
 -- standard library
 import Control.Applicative
 import Control.Monad                                                ( void )
+import Data.Proxy
 import Data.String
 import Text.Printf
 import Prelude                                                      as P
@@ -163,35 +168,58 @@ i32 = lift . P.fromIntegral
 --
 -- > gridDim.x * blockDim.x
 --
-gridSize :: CodeGen (IR Int32)
-gridSize = do
-  ncta  <- gridDim_x
-  nt    <- blockDim_x
-  mul numType ncta nt
+gridSize_x :: CodeGen (IR Int32)
+gridSize_x = gridSizeBy gridDim_x blockDim_x
+
+gridSize_y :: CodeGen (IR Int32)
+gridSize_y = gridSizeBy gridDim_y blockDim_y
+
+gridSize_z :: CodeGen (IR Int32)
+gridSize_z = gridSizeBy gridDim_z blockDim_z
+
+gridSizeBy :: CodeGen (IR Int32) -> CodeGen (IR Int32) -> CodeGen (IR Int32)
+gridSizeBy gridDim blockDim = do
+  ncta  <- gridDim
+  ntid  <- blockDim
+  mul numType ncta ntid
 
 
 -- | The global thread index, for one-dimensional grids
 --
 -- > blockDim.x * blockIdx.x + threadIdx.x
 --
-globalThreadIdx :: CodeGen (IR Int32)
-globalThreadIdx = do
-  ntid  <- blockDim_x
-  ctaid <- blockIdx_x
-  tid   <- threadIdx_x
+globalThreadIdx_x :: CodeGen (IR Int32)
+globalThreadIdx_x = globalThreadIdxBy blockDim_x blockIdx_x threadIdx_x
+
+globalThreadIdx_y :: CodeGen (IR Int32)
+globalThreadIdx_y = globalThreadIdxBy blockDim_y blockIdx_y threadIdx_y
+
+globalThreadIdx_z :: CodeGen (IR Int32)
+globalThreadIdx_z = globalThreadIdxBy blockDim_z blockIdx_z threadIdx_z
+
+globalThreadIdxBy :: CodeGen (IR Int32) -> CodeGen (IR Int32) -> CodeGen (IR Int32) -> CodeGen (IR Int32)
+globalThreadIdxBy blockDim blockIdx threadIdx = do
+  ntid  <- blockDim
+  ctaid <- blockIdx
+  tid   <- threadIdx
   --
   u     <- mul numType ntid ctaid
   v     <- add numType tid u
   return v
 
 
--- | Generate function parameters that will specify the first and last (linear)
--- index of the array this kernel should evaluate.
+-- | Generate kernel function parameters that specify the index range the
+-- threads will evaluate.
 --
-gangParam :: (IR Int, IR Int, [LLVM.Parameter])
-gangParam =
-  let start = "ix.start"
-      end   = "ix.end"
+gangParam  :: forall sh. Shape sh => Proxy sh -> (IR sh, [LLVM.Parameter])
+gangParam _ =
+  let end = "ix.end" :: Name sh
+  in  (local end, parameter end)
+
+gangParamFromTo :: forall sh. Shape sh => Proxy sh -> (IR sh, IR sh, [LLVM.Parameter])
+gangParamFromTo _ =
+  let start = "ix.start" :: Name sh
+      end   = "ix.end"   :: Name sh
   in
   (local start, local end, parameter start ++ parameter end )
 
