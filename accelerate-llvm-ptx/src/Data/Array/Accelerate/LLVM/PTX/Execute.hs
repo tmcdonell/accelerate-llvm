@@ -55,6 +55,7 @@ import Control.Monad.Reader                                     ( ask )
 import Control.Monad.State                                      ( liftIO )
 import Data.ByteString.Short.Char8                              ( ShortByteString, unpack )
 import Data.List                                                ( find )
+import Data.Int                                                 ( Int32 )
 import Data.Maybe                                               ( fromMaybe )
 import Data.Proxy                                               ( Proxy(..) )
 import Data.Word                                                ( Word32 )
@@ -100,10 +101,10 @@ instance Execute PTX where
   {-# INLINE stencil1    #-}
   {-# INLINE stencil2    #-}
   {-# INLINE aforeign    #-}
-  map           = simpleOp
-  generate      = simpleOp
-  transform     = simpleOp
-  backpermute   = simpleOp
+  map           = mapOp
+  generate      = generateOp
+  transform     = generateOp
+  backpermute   = generateOp
   fold          = foldOp
   fold1         = fold1Op
   foldSeg       = foldSegOp
@@ -163,6 +164,51 @@ simpleNamed fun exe gamma aenv sh = withExecutable exe $ \ptxExecutable -> do
   return future
 
 
+-- Mapping over an array can ignore the dimensionality of the array and treat it
+-- via its underlying linear representation.
+--
+{-# INLINE mapOp #-}
+mapOp
+    :: (Shape sh, Elt e)
+    => ExecutableR PTX
+    -> Gamma aenv
+    -> Val aenv
+    -> sh
+    -> Par PTX (Future (Array sh e))
+mapOp exe gamma aenv sh = withExecutable exe $ \ptxExecutable -> do
+  future <- new
+  result <- allocateRemote sh
+  --
+  if size sh <= maxBound32
+    then executeOp (ptxExecutable !# "map32") gamma aenv sh result
+    else executeOp (ptxExecutable !# "map64") gamma aenv sh result
+  --
+  put future result
+  return future
+
+
+-- The generate operation executes using a multidimensional thread blocks
+--
+{-# INLINE generateOp #-}
+generateOp
+    :: (Shape sh, Elt e)
+    => ExecutableR PTX
+    -> Gamma aenv
+    -> Val aenv
+    -> sh
+    -> Par PTX (Future (Array sh e))
+generateOp exe gamma aenv sh = withExecutable exe $ \ptxExecutable -> do
+  future <- new
+  result <- allocateRemote sh
+  --
+  if size sh <= maxBound32
+    then executeOp (ptxExecutable !# "generate32") gamma aenv sh result
+    else executeOp (ptxExecutable !# "generate64") gamma aenv sh result
+  --
+  put future result
+  return future
+
+
 -- There are two flavours of fold operation:
 --
 --   1. If we are collapsing to a single value, then multiple thread blocks are
@@ -201,7 +247,7 @@ foldOp
     -> Par PTX (Future (Array sh e))
 foldOp exe gamma aenv sh@(sx :. _)
   = case size sh of
-      0 -> simpleNamed "generate" exe gamma aenv sx
+      0 -> generateOp exe gamma aenv sx
       _ -> foldCore exe gamma aenv sh
 
 {-# INLINE foldCore #-}
@@ -273,7 +319,7 @@ foldDimOp
     -> Par PTX (Future (Array sh e))
 foldDimOp exe gamma aenv (sh :. sz)
   | sz > 0    = simpleNamed "fold"     exe gamma aenv sh
-  | otherwise = simpleNamed "generate" exe gamma aenv sh
+  | otherwise = generateOp exe gamma aenv sh
 
 
 {-# INLINE foldSegOp #-}
@@ -314,7 +360,7 @@ scanOp
     -> Par PTX (Future (Array (sh:.Int) e))
 scanOp exe gamma aenv (sz :. n) =
   case n of
-    0 -> simpleNamed "generate" exe gamma aenv (sz :. 1)
+    0 -> generateOp exe gamma aenv (sz :. 1)
     _ -> scanCore exe gamma aenv sz n (n+1)
 
 {-# INLINE scan1Op #-}
@@ -412,7 +458,7 @@ scan'Op exe gamma aenv sh@(sz :. n) =
     0 -> do
       future  <- new
       result  <- allocateRemote (sz :. 0)
-      sums    <- simpleNamed "generate" exe gamma aenv sz
+      sums    <- generateOp exe gamma aenv sz
       fork $ do sums' <- get sums
                 put future (result, sums')
       return future
@@ -575,6 +621,10 @@ aforeignOp name asm arr = do
 -- Skeleton execution
 -- ------------------
 
+{-# INLINE maxBound32 #-}
+maxBound32 :: Int
+maxBound32 = fromIntegral (maxBound :: Int32)
+
 -- | Retrieve the named kernel
 --
 (!#) :: FunctionTable -> ShortByteString -> Kernel
@@ -590,7 +640,7 @@ lookupKernel name ptxExecutable =
 -- Execute the function implementing this kernel.
 --
 executeOp
-    :: (Shape sh, Marshalable (Par PTX) args)
+    :: forall sh aenv args. (Shape sh, Marshalable (Par PTX) args)
     => Kernel
     -> Gamma aenv
     -> Val aenv
@@ -601,7 +651,7 @@ executeOp kernel gamma aenv sh args =
   let n = size sh
   in  when (n > 0) $ do
         stream <- ask
-        argv   <- marshal (Proxy::Proxy PTX) (0::Int, n, args, (gamma, aenv))
+        argv   <- marshal (Proxy::Proxy PTX) (sh, args, (gamma, aenv))
         liftIO  $ launch kernel stream n argv
 
 

@@ -16,12 +16,12 @@ module Data.Array.Accelerate.LLVM.PTX.CodeGen.Generate
 import Prelude                                                  hiding ( fromIntegral )
 
 -- accelerate
-import Data.Array.Accelerate.Array.Sugar                        ( Array, Shape, Elt )
+import Data.Array.Accelerate.Array.Sugar                        ( Array, Shape(..), Elt(..), empty )
 
+import Data.Array.Accelerate.LLVM.CodeGen.Arithmetic
 import Data.Array.Accelerate.LLVM.CodeGen.Array
 import Data.Array.Accelerate.LLVM.CodeGen.Base
 import Data.Array.Accelerate.LLVM.CodeGen.Environment
-import Data.Array.Accelerate.LLVM.CodeGen.Exp
 import Data.Array.Accelerate.LLVM.CodeGen.Monad
 import Data.Array.Accelerate.LLVM.CodeGen.Sugar
 
@@ -33,25 +33,61 @@ import Data.Array.Accelerate.LLVM.PTX.Target                    ( PTX )
 -- Construct a new array by applying a function to each index. Each thread
 -- processes multiple adjacent elements.
 --
+-- This generates two otherwise identical versions which use 32-bit and 64-bit
+-- integers for the loop counters. The former is used whenever the output array
+-- has all shape components < 32-bits.
+--
 mkGenerate
-    :: forall aenv sh e. (Shape sh, Elt e)
+    :: (Shape sh, Elt e)
     => PTX
     -> Gamma aenv
     -> IRFun1 PTX aenv (sh -> e)
     -> CodeGen (IROpenAcc PTX aenv (Array sh e))
 mkGenerate ptx aenv apply =
-  let
-      (start, end, paramGang)   = gangParam
-      (arrOut, paramOut)        = mutableArray ("out" :: Name (Array sh e))
-      paramEnv                  = envParam aenv
-  in
-  makeOpenAcc ptx "generate" (paramGang ++ paramOut ++ paramEnv) $ do
+  (+++) <$> mkGenerate32 ptx aenv apply
+        <*> mkGenerate64 ptx aenv apply
 
-    imapFromTo start end $ \i -> do
-      ix <- indexOfInt (irArrayShape arrOut) i          -- convert to multidimensional index
-      r  <- app1 apply ix                               -- apply generator function
+mkGenerate32
+    :: forall aenv sh e. (Shape sh, Elt e)
+    => PTX
+    -> Gamma aenv
+    -> IRFun1 PTX aenv (sh -> e)
+    -> CodeGen (IROpenAcc PTX aenv (Array sh e))
+mkGenerate32 ptx aenv apply =
+  let
+      (end, paramGang)      = gangParam    (Proxy :: Proxy sh)
+      (arrOut, paramOut)    = mutableArray ("out" :: Name (Array sh e))
+      paramEnv              = envParam aenv
+      shOut                 = irArrayShape arrOut
+      start                 = lift (empty :: sh)
+  in
+  makeOpenAcc ptx "generate32" (paramGang ++ paramOut ++ paramEnv) $ do
+
+    imapNestFromTo32 start end shOut $ \ix i -> do
+      r <- app1 apply ix                                -- apply generator function
       writeArray arrOut i r                             -- store result
 
     return_
 
+mkGenerate64
+    :: forall aenv sh e. (Shape sh, Elt e)
+    => PTX
+    -> Gamma aenv
+    -> IRFun1 PTX aenv (sh -> e)
+    -> CodeGen (IROpenAcc PTX aenv (Array sh e))
+mkGenerate64 ptx aenv apply =
+  let
+      (end, paramGang)      = gangParam    (Proxy :: Proxy sh)
+      (arrOut, paramOut)    = mutableArray ("out" :: Name (Array sh e))
+      paramEnv              = envParam aenv
+      shOut                 = irArrayShape arrOut
+      start                 = lift (empty :: sh)
+  in
+  makeOpenAcc ptx "generate64" (paramGang ++ paramOut ++ paramEnv) $ do
+
+    imapNestFromTo64 start end shOut $ \ix i -> do
+      r <- app1 apply ix                                -- apply generator function
+      writeArray arrOut i r                             -- store result
+
+    return_
 

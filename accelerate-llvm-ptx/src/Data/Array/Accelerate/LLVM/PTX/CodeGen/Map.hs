@@ -18,11 +18,14 @@ module Data.Array.Accelerate.LLVM.PTX.CodeGen.Map
 import Prelude                                                  hiding ( fromIntegral )
 
 -- accelerate
-import Data.Array.Accelerate.Array.Sugar                        ( Array, Elt )
+import Data.Array.Accelerate.Array.Sugar                        ( Array, Elt, DIM1 )
+import Data.Array.Accelerate.Type
 
+import Data.Array.Accelerate.LLVM.CodeGen.Arithmetic            as A
 import Data.Array.Accelerate.LLVM.CodeGen.Array
 import Data.Array.Accelerate.LLVM.CodeGen.Base
 import Data.Array.Accelerate.LLVM.CodeGen.Environment
+import Data.Array.Accelerate.LLVM.CodeGen.Exp
 import Data.Array.Accelerate.LLVM.CodeGen.Monad
 import Data.Array.Accelerate.LLVM.CodeGen.Sugar
 
@@ -40,15 +43,53 @@ mkMap :: forall aenv sh a b. Elt b
       -> IRFun1    PTX aenv (a -> b)
       -> IRDelayed PTX aenv (Array sh a)
       -> CodeGen (IROpenAcc PTX aenv (Array sh b))
-mkMap ptx aenv apply IRDelayed{..} =
-  let
-      (start, end, paramGang)   = gangParam
-      (arrOut, paramOut)        = mutableArray ("out" :: Name (Array sh b))
-      paramEnv                  = envParam aenv
-  in
-  makeOpenAcc ptx "map" (paramGang ++ paramOut ++ paramEnv) $ do
+mkMap ptx aenv apply array =
+  (+++) <$> mkMap32 ptx aenv apply array
+        <*> mkMap64 ptx aenv apply array
 
-    imapFromTo start end $ \i -> do
+
+mkMap32
+    :: forall aenv sh a b. Elt b
+    => PTX
+    -> Gamma         aenv
+    -> IRFun1    PTX aenv (a -> b)
+    -> IRDelayed PTX aenv (Array sh a)
+    -> CodeGen (IROpenAcc PTX aenv (Array sh b))
+mkMap32 ptx aenv apply IRDelayed{..} =
+  let
+      (end, paramGang)      = gangParam    (Proxy :: Proxy DIM1)
+      (arrOut, paramOut)    = mutableArray ("out" :: Name (Array sh b))
+      paramEnv              = envParam aenv
+      start                 = lift 0
+  in
+  makeOpenAcc ptx "map32" (paramGang ++ paramOut ++ paramEnv) $ do
+
+    end' <- A.fromIntegral integralType numType (indexHead end)
+
+    imapFromTo32 start end' $ \i -> do
+      xs <- app1 delayedLinearIndex =<< A.fromIntegral integralType numType i
+      ys <- app1 apply xs
+      writeArray arrOut i ys
+
+    return_
+
+mkMap64
+    :: forall aenv sh a b. Elt b
+    => PTX
+    -> Gamma         aenv
+    -> IRFun1    PTX aenv (a -> b)
+    -> IRDelayed PTX aenv (Array sh a)
+    -> CodeGen (IROpenAcc PTX aenv (Array sh b))
+mkMap64 ptx aenv apply IRDelayed{..} =
+  let
+      (end, paramGang)      = gangParam    (Proxy :: Proxy DIM1)
+      (arrOut, paramOut)    = mutableArray ("out" :: Name (Array sh b))
+      paramEnv              = envParam aenv
+      start                 = lift 0
+  in
+  makeOpenAcc ptx "map64" (paramGang ++ paramOut ++ paramEnv) $ do
+
+    imapFromTo64 start (indexHead end) $ \i -> do
       xs <- app1 delayedLinearIndex i
       ys <- app1 apply xs
       writeArray arrOut i ys
