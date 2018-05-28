@@ -277,21 +277,21 @@ mkScanAllP1 dir dev aenv combine mseed IRDelayed{..} =
     -- element into the input and output. Threads shuffle their indices
     -- appropriately.
     --
-    bid <- blockIdx
-    gd  <- gridDim
+    bid <- blockIdx_x
+    gd  <- gridDim_x
     gd' <- int gd
     s0  <- A.add numType start =<< int bid
 
     -- iterating over thread-block-wide segments
     imapFromStepTo s0 gd' end $ \chunk -> do
 
-      bd    <- blockDim
+      bd    <- blockDim_x
       bd'   <- int bd
       inf   <- A.mul numType chunk bd'
 
       -- index i* is the index that this thread will read data from. Recall that
       -- the supremum index is exclusive
-      tid   <- threadIdx
+      tid   <- threadIdx_x
       tid'  <- int tid
       i0    <- case dir of
                  L -> A.add numType inf tid'
@@ -391,12 +391,12 @@ mkScanAllP2 dir dev aenv combine =
     -- value computed by the last thread.
     carry <- staticSharedMem 1
 
-    bd    <- blockDim
+    bd    <- blockDim_x
     bd'   <- int bd
     imapFromStepTo start bd' end $ \offset -> do
 
       -- Index of the partial sums array that this thread will process.
-      tid   <- threadIdx
+      tid   <- threadIdx_x
       tid'  <- int tid
       i0    <- case dir of
                  L -> A.add numType offset tid'
@@ -469,7 +469,7 @@ mkScanAllP3 dir dev aenv combine mseed =
   makeOpenAccWith config "scanP3" (paramGang ++ paramTmp ++ paramOut ++ paramStride ++ paramEnv) $ do
 
     sz  <- return $ indexHead (irArrayShape arrOut)
-    tid <- int =<< threadIdx
+    tid <- int =<< threadIdx_x
 
     -- Threads that will never contribute can just exit immediately. The size of
     -- each chunk is set by the block dimension of the step 1 kernel, which may
@@ -478,8 +478,8 @@ mkScanAllP3 dir dev aenv combine mseed =
 
       -- Iterate over the segments computed in phase 1. Note that we have one
       -- fewer chunk to process because the first has no carry-in.
-      bid <- int =<< blockIdx
-      gd  <- int =<< gridDim
+      bid <- int =<< blockIdx_x
+      gd  <- int =<< gridDim_x
       c0  <- A.add numType start bid
       imapFromStepTo c0 gd end $ \chunk -> do
 
@@ -523,7 +523,7 @@ mkScanAllP3 dir dev aenv combine mseed =
                          return b
 
         -- Apply the carry-in value to each element in the chunk
-        bd        <- int =<< blockDim
+        bd        <- int =<< blockDim_x
         i0        <- A.add numType inf tid
         imapFromStepTo i0 bd sup $ \i -> do
           v <- readArray arrOut i
@@ -572,18 +572,18 @@ mkScan'AllP1 dir dev aenv combine seed IRDelayed{..} =
 
     -- A thread block scans a non-empty stripe of the input, storing the partial
     -- result and the final block-wide aggregate
-    bid <- int =<< blockIdx
-    gd  <- int =<< gridDim
+    bid <- int =<< blockIdx_x
+    gd  <- int =<< gridDim_x
     s0  <- A.add numType start bid
 
     -- iterate over thread-block wide segments
     imapFromStepTo s0 gd end $ \seg -> do
 
-      bd  <- int =<< blockDim
+      bd  <- int =<< blockDim_x
       inf <- A.mul numType seg bd
 
       -- i* is the index that this thread will read data from
-      tid <- int =<< threadIdx
+      tid <- int =<< threadIdx_x
       i0  <- case dir of
                L -> A.add numType inf tid
                R -> do x <- A.sub numType sz inf
@@ -607,7 +607,7 @@ mkScan'AllP1 dir dev aenv combine seed IRDelayed{..} =
 
         -- Thread 0 of the first segment must also evaluate and store the
         -- initial element
-        ti <- threadIdx
+        ti <- threadIdx_x
         x1 <- if A.eq singleType ti (lift 0) `A.land` A.eq singleType seg (lift 0)
                 then do
                   z <- seed
@@ -684,9 +684,9 @@ mkScan'AllP2 dir dev aenv combine =
 
     -- A single thread block iterates over the per-block partial results from
     -- step 1
-    tid   <- threadIdx
+    tid   <- threadIdx_x
     tid'  <- int tid
-    bd    <- int =<< blockDim
+    bd    <- int =<< blockDim_x
     imapFromStepTo start bd end $ \offset -> do
 
       i0  <- case dir of
@@ -769,12 +769,12 @@ mkScan'AllP3 dir dev aenv combine =
   makeOpenAccWith config "scanP3" (paramGang ++ paramTmp ++ paramOut ++ paramStride ++ paramEnv) $ do
 
     sz  <- return $ indexHead (irArrayShape arrOut)
-    tid <- int =<< threadIdx
+    tid <- int =<< threadIdx_x
 
     when (A.lt singleType tid stride) $ do
 
-      bid <- int =<< blockIdx
-      gd  <- int =<< gridDim
+      bid <- int =<< blockIdx_x
+      gd  <- int =<< gridDim_x
       c0  <- A.add numType start bid
       imapFromStepTo c0 gd end $ \chunk -> do
 
@@ -803,7 +803,7 @@ mkScan'AllP3 dir dev aenv combine =
                          return b
 
         -- Apply the carry-in value to each element in the chunk
-        bd        <- int =<< blockDim
+        bd        <- int =<< blockDim_x
         i0        <- A.add numType inf tid
         imapFromStepTo i0 bd sup $ \i -> do
           v <- readArray arrOut i
@@ -870,13 +870,13 @@ mkScanDim dir dev aenv combine mseed IRDelayed{..} =
     -- cooperatively scan along one dimension, but thread blocks do not
     -- communicate with each other.
     --
-    bid <- int =<< blockIdx
-    gd  <- int =<< gridDim
+    bid <- int =<< blockIdx_x
+    gd  <- int =<< gridDim_x
     s0  <- A.add numType start bid
     imapFromStepTo s0 gd end $ \seg -> do
 
       -- Index this thread reads from
-      tid   <- threadIdx
+      tid   <- threadIdx_x
       tid'  <- int tid
       i0    <- case dir of
                  L -> do x <- A.mul numType seg sz
@@ -905,7 +905,7 @@ mkScanDim dir dev aenv combine mseed IRDelayed{..} =
                                        return w
 
       -- Stride indices by block dimension
-      bd  <- blockDim
+      bd  <- blockDim_x
       bd' <- int bd
       let next ix = case dir of
                       L -> A.add numType ix bd'
@@ -1062,14 +1062,14 @@ mkScan'Dim dir dev aenv combine seed IRDelayed{..} =
 
     -- If the innermost dimension is smaller than the number of threads in the
     -- block, those threads will never contribute to the output.
-    tid   <- threadIdx
+    tid   <- threadIdx_x
     tid'  <- int tid
     when (A.lte singleType tid' sz) $ do
 
       -- Thread blocks iterate over the outer dimensions, each thread block
       -- cooperatively scanning along each outermost index.
-      bid <- int =<< blockIdx
-      gd  <- int =<< gridDim
+      bid <- int =<< blockIdx_x
+      gd  <- int =<< gridDim_x
       s0  <- A.add numType start bid
       imapFromStepTo s0 gd end $ \seg -> do
 
@@ -1102,7 +1102,7 @@ mkScan'Dim dir dev aenv combine seed IRDelayed{..} =
           writeArray arrOut i0                   z
           writeArray carry  (lift 0 :: IR Int32) z
 
-        bd  <- blockDim
+        bd  <- blockDim_x
         bd' <- int bd
         let next ix = case dir of
                         L -> A.add numType ix bd'
@@ -1250,7 +1250,7 @@ scanBlockSMem dir dev combine nelem = warpScan >=> warpPrefix
     warpScan input = do
       -- Allocate (1.5 * warpSize) elements of shared memory for each warp
       -- (individually addressable by each warp)
-      wid   <- warpId
+      wid   <- warpId dev
       skip  <- A.mul numType wid (int32 warp_smem_bytes)
       smem  <- dynamicSharedMem (int32 warp_smem_elems) skip
       scanWarpSMem dir dev combine smem input
@@ -1261,13 +1261,13 @@ scanBlockSMem dir dev combine nelem = warpScan >=> warpPrefix
     warpPrefix :: IR e -> CodeGen (IR e)
     warpPrefix input = do
       -- Allocate #warps elements of shared memory
-      bd    <- blockDim
+      bd    <- blockDim_x
       warps <- A.quot integralType bd (int32 (CUDA.warpSize dev))
       skip  <- A.mul numType warps (int32 warp_smem_bytes)
       smem  <- dynamicSharedMem warps skip
 
       -- Share warp aggregates
-      wid   <- warpId
+      wid   <- warpId dev
       lane  <- laneId
       when (A.eq singleType lane (int32 (CUDA.warpSize dev - 1))) $ do
         writeArray smem wid input

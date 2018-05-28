@@ -20,7 +20,12 @@ module Data.Array.Accelerate.LLVM.PTX.CodeGen.Base (
   DeviceProperties, KernelMetadata(..),
 
   -- Thread identifiers
-  blockDim, gridDim, threadIdx, blockIdx, warpSize,
+  warpSize,
+  blockDim_x,  blockDim_y,  blockDim_z,
+  gridDim_x,   gridDim_y,   gridDim_z,
+  threadIdx_x, threadIdx_y, threadIdx_z,
+  blockIdx_x,  blockIdx_y,  blockIdx_z,
+
   gridSize, globalThreadIdx,
   gangParam,
 
@@ -79,6 +84,8 @@ import Data.Array.Accelerate.LLVM.PTX.Analysis.Launch
 import Data.Array.Accelerate.LLVM.PTX.Context
 import Data.Array.Accelerate.LLVM.PTX.Target
 
+import qualified Foreign.CUDA.Analysis                              as CUDA
+
 -- standard library
 import Control.Applicative
 import Control.Monad                                                ( void )
@@ -94,26 +101,42 @@ import Prelude                                                      as P
 --
 -- <https://github.com/llvm-mirror/llvm/blob/master/include/llvm/IR/IntrinsicsNVVM.td>
 --
-specialPTXReg :: Label -> CodeGen (IR Int32)
-specialPTXReg f =
+special_ptx_reg :: Label -> CodeGen (IR Int32)
+special_ptx_reg f =
   call (Body type' f) [NoUnwind, ReadNone]
 
-blockDim, gridDim, threadIdx, blockIdx, warpSize :: CodeGen (IR Int32)
-blockDim    = specialPTXReg "llvm.nvvm.read.ptx.sreg.ntid.x"
-gridDim     = specialPTXReg "llvm.nvvm.read.ptx.sreg.nctaid.x"
-threadIdx   = specialPTXReg "llvm.nvvm.read.ptx.sreg.tid.x"
-blockIdx    = specialPTXReg "llvm.nvvm.read.ptx.sreg.ctaid.x"
-warpSize    = specialPTXReg "llvm.nvvm.read.ptx.sreg.warpsize"
+warpSize :: CodeGen (IR Int32)
+warpSize    = special_ptx_reg "llvm.nvvm.read.ptx.sreg.warpsize"
 
 laneId :: CodeGen (IR Int32)
-laneId      = specialPTXReg "llvm.nvvm.read.ptx.sreg.laneid"
+laneId      = special_ptx_reg "llvm.nvvm.read.ptx.sreg.laneid"
+
+blockDim_x, blockDim_y, blockDim_z :: CodeGen (IR Int32)
+blockDim_x  = special_ptx_reg "llvm.nvvm.read.ptx.sreg.ntid.x"
+blockDim_y  = special_ptx_reg "llvm.nvvm.read.ptx.sreg.ntid.y"
+blockDim_z  = special_ptx_reg "llvm.nvvm.read.ptx.sreg.ntid.z"
+
+gridDim_x, gridDim_y, gridDim_z :: CodeGen (IR Int32)
+gridDim_x   = special_ptx_reg "llvm.nvvm.read.ptx.sreg.nctaid.x"
+gridDim_y   = special_ptx_reg "llvm.nvvm.read.ptx.sreg.nctaid.y"
+gridDim_z   = special_ptx_reg "llvm.nvvm.read.ptx.sreg.nctaid.z"
+
+threadIdx_x, threadIdx_y, threadIdx_z :: CodeGen (IR Int32)
+threadIdx_x = special_ptx_reg "llvm.nvvm.read.ptx.sreg.tid.x"
+threadIdx_y = special_ptx_reg "llvm.nvvm.read.ptx.sreg.tid.y"
+threadIdx_z = special_ptx_reg "llvm.nvvm.read.ptx.sreg.tid.z"
+
+blockIdx_x, blockIdx_y, blockIdx_z :: CodeGen (IR Int32)
+blockIdx_x  = special_ptx_reg "llvm.nvvm.read.ptx.sreg.ctaid.x"
+blockIdx_y  = special_ptx_reg "llvm.nvvm.read.ptx.sreg.ctaid.y"
+blockIdx_z  = special_ptx_reg "llvm.nvvm.read.ptx.sreg.ctaid.z"
 
 laneMask_eq, laneMask_lt, laneMask_le, laneMask_gt, laneMask_ge :: CodeGen (IR Int32)
-laneMask_eq = specialPTXReg "llvm.nvvm.read.ptx.sreg.lanemask.eq"
-laneMask_lt = specialPTXReg "llvm.nvvm.read.ptx.sreg.lanemask.lt"
-laneMask_le = specialPTXReg "llvm.nvvm.read.ptx.sreg.lanemask.le"
-laneMask_gt = specialPTXReg "llvm.nvvm.read.ptx.sreg.lanemask.gt"
-laneMask_ge = specialPTXReg "llvm.nvvm.read.ptx.sreg.lanemask.ge"
+laneMask_eq = special_ptx_reg "llvm.nvvm.read.ptx.sreg.lanemask.eq"
+laneMask_lt = special_ptx_reg "llvm.nvvm.read.ptx.sreg.lanemask.lt"
+laneMask_le = special_ptx_reg "llvm.nvvm.read.ptx.sreg.lanemask.le"
+laneMask_gt = special_ptx_reg "llvm.nvvm.read.ptx.sreg.lanemask.gt"
+laneMask_ge = special_ptx_reg "llvm.nvvm.read.ptx.sreg.lanemask.ge"
 
 
 -- | NOTE: The special register %warpid as volatile value and is not guaranteed
@@ -123,39 +146,39 @@ laneMask_ge = specialPTXReg "llvm.nvvm.read.ptx.sreg.lanemask.ge"
 --
 -- http://docs.nvidia.com/cuda/parallel-thread-execution/index.html#special-registers-warpid
 --
--- We might consider passing in the (constant) warp size from device properties,
--- so that the division can be optimised to a shift.
---
-warpId :: CodeGen (IR Int32)
-warpId = do
-  tid <- threadIdx
-  ws  <- warpSize
-  A.quot integralType tid ws
+warpId :: DeviceProperties -> CodeGen (IR Int32)
+warpId dev = do
+  tid <- threadIdx_x
+  -- ws  <- warpSize
+  A.quot integralType tid (i32 (CUDA.warpSize dev))
 
 _warpId :: CodeGen (IR Int32)
-_warpId = specialPTXReg "llvm.ptx.read.warpid"
+_warpId = special_ptx_reg "llvm.ptx.read.warpid"
+
+i32 :: Int -> IR Int32
+i32 = lift . P.fromIntegral
 
 
--- | The size of the thread grid
+-- | The size of the thread grid, for one-dimensional grids
 --
 -- > gridDim.x * blockDim.x
 --
 gridSize :: CodeGen (IR Int32)
 gridSize = do
-  ncta  <- gridDim
-  nt    <- blockDim
+  ncta  <- gridDim_x
+  nt    <- blockDim_x
   mul numType ncta nt
 
 
--- | The global thread index
+-- | The global thread index, for one-dimensional grids
 --
 -- > blockDim.x * blockIdx.x + threadIdx.x
 --
 globalThreadIdx :: CodeGen (IR Int32)
 globalThreadIdx = do
-  ntid  <- blockDim
-  ctaid <- blockIdx
-  tid   <- threadIdx
+  ntid  <- blockDim_x
+  ctaid <- blockIdx_x
+  tid   <- threadIdx_x
   --
   u     <- mul numType ntid ctaid
   v     <- add numType tid u

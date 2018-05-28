@@ -161,8 +161,8 @@ mkFoldAllS dev aenv combine mseed IRDelayed{..} =
   in
   makeOpenAccWith config "foldAllS" (paramGang ++ paramOut ++ paramEnv) $ do
 
-    tid     <- threadIdx
-    bd      <- blockDim
+    tid     <- threadIdx_x
+    bd      <- blockDim_x
 
     -- We can assume that there is only a single thread block
     start'  <- i32 start
@@ -219,8 +219,8 @@ mkFoldAllM1 dev aenv combine IRDelayed{..} =
     -- order of operations remains fixed, this method supports non-commutative
     -- reductions.
     --
-    tid   <- threadIdx
-    bd    <- int =<< blockDim
+    tid   <- threadIdx_x
+    bd    <- int =<< blockDim_x
     sz    <- indexHead <$> delayedExtent
 
     imapFromTo start end $ \seg -> do
@@ -273,9 +273,9 @@ mkFoldAllM2 dev aenv combine mseed =
     -- When only a single thread block remains, we have reached the final
     -- reduction step and add the initial element (for exclusive reductions).
     --
-    tid   <- threadIdx
-    gd    <- gridDim
-    bd    <- int =<< blockDim
+    tid   <- threadIdx_x
+    gd    <- gridDim_x
+    bd    <- int =<< blockDim_x
     sz    <- return $ indexHead (irArrayShape arrTmp)
 
     imapFromTo start end $ \seg -> do
@@ -335,7 +335,7 @@ mkFoldDim dev aenv combine mseed IRDelayed{..} =
 
     -- If the innermost dimension is smaller than the number of threads in the
     -- block, those threads will never contribute to the output.
-    tid   <- threadIdx
+    tid   <- threadIdx_x
     sz    <- indexHead <$> delayedExtent
     sz'   <- i32 sz
 
@@ -357,7 +357,7 @@ mkFoldDim dev aenv combine mseed IRDelayed{..} =
 
         i0    <- A.add numType from =<< int tid
         x0    <- app1 delayedLinearIndex i0
-        bd    <- blockDim
+        bd    <- blockDim_x
         r0    <- if A.gte singleType sz' bd
                    then reduceBlockSMem dev combine Nothing    x0
                    else reduceBlockSMem dev combine (Just sz') x0
@@ -452,7 +452,7 @@ reduceBlockSMem dev combine size = warpReduce >=> warpAggregate
     warpReduce :: IR e -> CodeGen (IR e)
     warpReduce input = do
       -- Allocate (1.5 * warpSize) elements of shared memory for each warp
-      wid   <- warpId
+      wid   <- warpId dev
       skip  <- A.mul numType wid (int32 (warp_smem_elems * bytes))
       smem  <- dynamicSharedMem (int32 warp_smem_elems) skip
 
@@ -477,13 +477,13 @@ reduceBlockSMem dev combine size = warpReduce >=> warpAggregate
     warpAggregate :: IR e -> CodeGen (IR e)
     warpAggregate input = do
       -- Allocate #warps elements of shared memory
-      bd    <- blockDim
+      bd    <- blockDim_x
       warps <- A.quot integralType bd (int32 (CUDA.warpSize dev))
       skip  <- A.mul numType warps (int32 (warp_smem_elems * bytes))
       smem  <- dynamicSharedMem warps skip
 
       -- Share the per-lane aggregates
-      wid   <- warpId
+      wid   <- warpId dev
       lane  <- laneId
       when (A.eq singleType lane (lift 0)) $ do
         writeArray smem wid input
@@ -494,7 +494,7 @@ reduceBlockSMem dev combine size = warpReduce >=> warpAggregate
       -- Update the total aggregate. Thread 0 just does this sequentially (as is
       -- done in CUB), but we could also do this cooperatively (better for
       -- larger thread blocks?)
-      tid   <- threadIdx
+      tid   <- threadIdx_x
       if A.eq singleType tid (lift 0)
         then do
           steps <- case size of
@@ -585,8 +585,8 @@ reduceFromTo
     -> CodeGen ()
 reduceFromTo dev from to combine get set = do
 
-  tid   <- int =<< threadIdx
-  bd    <- int =<< blockDim
+  tid   <- int =<< threadIdx_x
+  bd    <- int =<< blockDim_x
 
   valid <- A.sub numType to from
   i     <- A.add numType from tid
@@ -630,8 +630,8 @@ imapFromTo
     -> (IR Int -> CodeGen ())
     -> CodeGen ()
 imapFromTo start end body = do
-  bid <- int =<< blockIdx
-  gd  <- int =<< gridDim
+  bid <- int =<< blockIdx_x
+  gd  <- int =<< gridDim_x
   i0  <- A.add numType start bid
   imapFromStepTo i0 gd end body
 

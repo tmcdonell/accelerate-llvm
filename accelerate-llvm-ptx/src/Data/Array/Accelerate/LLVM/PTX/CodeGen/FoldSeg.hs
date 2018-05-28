@@ -151,7 +151,7 @@ mkFoldSegP_block dev aenv combine mseed arr seg =
       -- The first two threads of the block determine the indices of the
       -- segments array that we will reduce between and distribute those values
       -- to the other threads in the block.
-      tid <- threadIdx
+      tid <- threadIdx_x
       when (A.lt singleType tid (lift 2)) $ do
         i <- case rank (undefined::sh) of
                0 -> return s
@@ -210,7 +210,7 @@ mkFoldSegP_block dev aenv combine mseed arr seg =
                          in
                          return . IR $ go (eltType (undefined::e))
 
-            bd  <- int =<< blockDim
+            bd  <- int =<< blockDim_x
             v0  <- A.sub numType sup inf
             v0' <- i32 v0
             r0  <- if A.gte singleType v0 bd
@@ -308,15 +308,15 @@ mkFoldSegP_warp dev aenv combine mseed arr seg =
 
     -- Each warp works independently.
     -- Determine the ID of this warp within the thread block.
-    tid   <- threadIdx
+    tid   <- threadIdx_x
     wid   <- A.quot integralType tid (int32 ws)
 
     -- Number of warps per thread block
-    bd    <- blockDim
+    bd    <- blockDim_x
     wpb   <- A.quot integralType bd (int32 ws)
 
     -- ID of this warp within the grid
-    bid   <- blockIdx
+    bid   <- blockIdx_x
     gwid  <- do a <- A.mul numType bid wpb
                 b <- A.add numType wid a
                 return b
@@ -355,7 +355,7 @@ mkFoldSegP_warp dev aenv combine mseed arr seg =
 
     -- Each thread reduces a segment independently
     s0    <- A.add numType start =<< int gwid
-    gd    <- int =<< gridDim
+    gd    <- int =<< gridDim_x
     wpb'  <- int wpb
     step  <- A.mul numType wpb' gd
     imapFromStepTo s0 step end $ \s -> do
