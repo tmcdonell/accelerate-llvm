@@ -179,9 +179,10 @@ mapOp exe gamma aenv sh = withExecutable exe $ \ptxExecutable -> do
   future <- new
   result <- allocateRemote sh
   --
-  if size sh <= maxBound32
-    then executeOp (ptxExecutable !# "map32") gamma aenv sh result
-    else executeOp (ptxExecutable !# "map64") gamma aenv sh result
+  let n = size sh
+  if  n <= maxBound32
+    then executeOp (ptxExecutable !# "map32") gamma aenv (Z:.n) result
+    else executeOp (ptxExecutable !# "map64") gamma aenv (Z:.n) result
   --
   put future result
   return future
