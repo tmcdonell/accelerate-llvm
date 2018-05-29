@@ -35,7 +35,7 @@ import Data.Array.Accelerate.Lifetime
 import Data.Array.Accelerate.LLVM.Analysis.Match
 import Data.Array.Accelerate.LLVM.Execute
 
-import Data.Array.Accelerate.LLVM.PTX.Analysis.Launch           ( multipleOf )
+import Data.Array.Accelerate.LLVM.PTX.Analysis.Launch
 import Data.Array.Accelerate.LLVM.PTX.Array.Data
 import Data.Array.Accelerate.LLVM.PTX.Array.Prim                ( memsetArrayAsync )
 import Data.Array.Accelerate.LLVM.PTX.Execute.Async
@@ -641,32 +641,46 @@ lookupKernel name ptxExecutable =
 -- Execute the function implementing this kernel.
 --
 executeOp
-    :: forall sh aenv args. (Shape sh, Marshalable (Par PTX) args)
+    :: (Shape sh, Marshalable (Par PTX) args)
     => Kernel
     -> Gamma aenv
     -> Val aenv
     -> sh
     -> args
     -> Par PTX ()
-executeOp kernel gamma aenv sh args =
-  let n = size sh
-  in  when (n > 0) $ do
-        stream <- ask
-        argv   <- marshal (Proxy::Proxy PTX) (sh, args, (gamma, aenv))
-        liftIO  $ launch kernel stream n argv
+executeOp kernel@Kernel{..} gamma aenv sh args =
+  let
+      n     = size sh
+      grid  = kernelThreadBlocks n
+      cta   = kernelThreadBlockSize
+
+      (grid', cta') =
+        case shapeToList sh of
+          [x,y]     -> launchConfigDIM2 grid cta (Z:.y:.x)
+          (x:y:z:_) -> launchConfigDIM3 grid cta (Z:.z:.y:.x)
+          _         -> ((grid, 1, 1), (cta, 1, 1))
+  in
+  when (n > 0) $ do
+    stream <- ask
+    argv   <- marshal (Proxy::Proxy PTX) (sh, args, (gamma, aenv))
+    liftIO  $ launch kernel stream grid' cta' argv
 
 
 -- Execute a device function with the given thread configuration and function
 -- parameters.
 --
-launch :: Kernel -> Stream -> Int -> [CUDA.FunParam] -> IO ()
-launch Kernel{..} stream n args =
+launch
+    :: Kernel
+    -> Stream
+    -> (Int,Int,Int)        -- grid dimensions
+    -> (Int,Int,Int)        -- thread block dimensions
+    -> [CUDA.FunParam]
+    -> IO ()
+launch Kernel{..} stream grid cta args =
   withLifetime stream $ \st ->
     Debug.monitorProcTime query msg (Just st) $
       CUDA.launchKernel kernelFun grid cta smem (Just st) args
   where
-    cta   = (kernelThreadBlockSize, 1, 1)
-    grid  = (kernelThreadBlocks n, 1, 1)
     smem  = kernelSharedMemBytes
 
     -- Debugging/monitoring support
@@ -674,10 +688,9 @@ launch Kernel{..} stream n args =
               then return True
               else Debug.getFlag Debug.dump_exec
 
-    fst3 (x,_,_)      = x
     msg wall cpu gpu  = do
       Debug.addProcessorTime Debug.PTX gpu
       Debug.traceIO Debug.dump_exec $
-        printf "exec: %s <<< %d, %d, %d >>> %s"
-               (unpack kernelName) (fst3 grid) (fst3 cta) smem (Debug.elapsed wall cpu gpu)
+        printf "exec: %s <<< %s, %s, %d >>> %s"
+               (unpack kernelName) (show grid) (show cta) smem (Debug.elapsed wall cpu gpu)
 
