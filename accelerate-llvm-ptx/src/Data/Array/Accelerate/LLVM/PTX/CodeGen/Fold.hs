@@ -22,7 +22,7 @@ module Data.Array.Accelerate.LLVM.PTX.CodeGen.Fold
 -- accelerate
 import Data.Array.Accelerate.Analysis.Match
 import Data.Array.Accelerate.Analysis.Type
-import Data.Array.Accelerate.Array.Sugar                            ( Array, Scalar, Vector, Shape, Z, (:.), Elt(..) )
+import Data.Array.Accelerate.Array.Sugar                            ( Array, Scalar, Vector, Z, (:.), Shape, Elt(..), DIM1, empty )
 
 -- accelerate-llvm-*
 import Data.Array.Accelerate.LLVM.Analysis.Match
@@ -147,12 +147,13 @@ mkFoldAllS
     -> CodeGen (IROpenAcc PTX aenv (Scalar e))
 mkFoldAllS dev aenv combine mseed IRDelayed{..} =
   let
-      (start, end, paramGang)   = gangParam
-      (arrOut, paramOut)        = mutableArray ("out" :: Name (Scalar e))
-      paramEnv                  = envParam aenv
+      (end, paramGang)    = gangParam    (Proxy :: Proxy DIM1)
+      (arrOut, paramOut)  = mutableArray ("out" :: Name (Scalar e))
+      paramEnv            = envParam aenv
+      start               = lift (empty :: DIM1)
       --
-      config                    = launchConfig dev (CUDA.incWarp dev) smem multipleOf multipleOfQ
-      smem n                    = warps * (1 + per_warp) * bytes
+      config              = launchConfig dev (CUDA.incWarp dev) smem multipleOf multipleOfQ
+      smem n              = warps * (1 + per_warp) * bytes
         where
           ws        = CUDA.warpSize dev
           warps     = n `P.quot` ws
@@ -165,8 +166,8 @@ mkFoldAllS dev aenv combine mseed IRDelayed{..} =
     bd      <- blockDim_x
 
     -- We can assume that there is only a single thread block
-    start'  <- i32 start
-    end'    <- i32 end
+    start'  <- i32 (indexHead start)
+    end'    <- i32 (indexHead end)
     i0      <- A.add numType start' tid
     sz      <- A.sub numType end' start'
     when (A.lt singleType i0 sz) $ do
@@ -200,12 +201,13 @@ mkFoldAllM1
     -> CodeGen (IROpenAcc PTX aenv (Scalar e))
 mkFoldAllM1 dev aenv combine IRDelayed{..} =
   let
-      (start, end, paramGang)   = gangParam
-      (arrTmp, paramTmp)        = mutableArray ("tmp" :: Name (Vector e))
-      paramEnv                  = envParam aenv
+      (end, paramGang)    = gangParam    (Proxy :: Proxy DIM1)
+      (arrTmp, paramTmp)  = mutableArray ("tmp" :: Name (Vector e))
+      paramEnv            = envParam aenv
+      start               = lift (empty :: DIM1)
       --
-      config                    = launchConfig dev (CUDA.incWarp dev) smem const [|| const ||]
-      smem n                    = warps * (1 + per_warp) * bytes
+      config              = launchConfig dev (CUDA.incWarp dev) smem const [|| const ||]
+      smem n              = warps * (1 + per_warp) * bytes
         where
           ws        = CUDA.warpSize dev
           warps     = n `P.quot` ws
@@ -223,7 +225,7 @@ mkFoldAllM1 dev aenv combine IRDelayed{..} =
     bd    <- int =<< blockDim_x
     sz    <- indexHead <$> delayedExtent
 
-    imapFromTo start end $ \seg -> do
+    imapFromTo (indexHead start) (indexHead end) $ \seg -> do
 
       -- Wait for all threads to catch up before beginning the stripe
       __syncthreads
@@ -253,10 +255,11 @@ mkFoldAllM2
     -> CodeGen (IROpenAcc PTX aenv (Scalar e))
 mkFoldAllM2 dev aenv combine mseed =
   let
-      (start, end, paramGang)   = gangParam
-      (arrTmp, paramTmp)        = mutableArray ("tmp" :: Name (Vector e))
-      (arrOut, paramOut)        = mutableArray ("out" :: Name (Vector e))
-      paramEnv                  = envParam aenv
+      (end, paramGang)    = gangParam    (Proxy :: Proxy DIM1)
+      (arrTmp, paramTmp)  = mutableArray ("tmp" :: Name (Vector e))
+      (arrOut, paramOut)  = mutableArray ("out" :: Name (Vector e))
+      paramEnv            = envParam aenv
+      start               = lift (empty :: DIM1)
       --
       config                    = launchConfig dev (CUDA.incWarp dev) smem const [|| const ||]
       smem n                    = warps * (1 + per_warp) * bytes
@@ -278,7 +281,7 @@ mkFoldAllM2 dev aenv combine mseed =
     bd    <- int =<< blockDim_x
     sz    <- return $ indexHead (irArrayShape arrTmp)
 
-    imapFromTo start end $ \seg -> do
+    imapFromTo (indexHead start) (indexHead end) $ \seg -> do
 
       -- Wait for all threads to catch up before beginning the stripe
       __syncthreads
@@ -319,12 +322,13 @@ mkFoldDim
     -> CodeGen (IROpenAcc PTX aenv (Array sh e))
 mkFoldDim dev aenv combine mseed IRDelayed{..} =
   let
-      (start, end, paramGang)   = gangParam
-      (arrOut, paramOut)        = mutableArray ("out" :: Name (Array sh e))
-      paramEnv                  = envParam aenv
+      (end, paramGang)    = gangParam    (Proxy :: Proxy DIM1)
+      (arrOut, paramOut)  = mutableArray ("out" :: Name (Array sh e))
+      paramEnv            = envParam aenv
+      start               = lift (empty :: DIM1)
       --
-      config                    = launchConfig dev (CUDA.incWarp dev) smem const [|| const ||]
-      smem n                    = warps * (1 + per_warp) * bytes
+      config              = launchConfig dev (CUDA.incWarp dev) smem const [|| const ||]
+      smem n              = warps * (1 + per_warp) * bytes
         where
           ws        = CUDA.warpSize dev
           warps     = n `P.quot` ws
@@ -344,7 +348,7 @@ mkFoldDim dev aenv combine mseed IRDelayed{..} =
       -- Thread blocks iterate over the outer dimensions, each thread block
       -- cooperatively reducing along each outermost index to a single value.
       --
-      imapFromTo start end $ \seg -> do
+      imapFromTo (indexHead start) (indexHead end) $ \seg -> do
 
         -- Wait for threads to catch up before starting this segment. We could
         -- also place this at the bottom of the loop, but here allows threads to
