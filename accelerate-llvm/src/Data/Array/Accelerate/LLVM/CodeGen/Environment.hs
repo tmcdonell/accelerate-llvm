@@ -15,14 +15,14 @@
 module Data.Array.Accelerate.LLVM.CodeGen.Environment
   where
 
-import Data.IntMap                                              ( IntMap )
+import Data.IntMap                                                  ( IntMap )
 import Data.String
 import Text.Printf
-import qualified Data.IntMap                                    as IM
+import qualified Data.IntMap                                        as IM
 
-import Data.Array.Accelerate.AST                                ( Idx(..), idxToInt )
-import Data.Array.Accelerate.Error                              ( internalError )
-import Data.Array.Accelerate.Array.Sugar                        ( Array, Shape, Elt )
+import Data.Array.Accelerate.AST                                    ( Idx(..), idxToInt )
+import Data.Array.Accelerate.Error                                  ( internalError )
+import Data.Array.Accelerate.Array.Sugar                            ( Array, Shape, Elt )
 
 import Data.Array.Accelerate.LLVM.CodeGen.IR
 

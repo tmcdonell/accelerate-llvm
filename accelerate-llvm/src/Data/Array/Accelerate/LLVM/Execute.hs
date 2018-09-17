@@ -35,15 +35,16 @@ import Data.Array.Accelerate.Analysis.Match
 import Data.Array.Accelerate.Array.Representation               ( SliceIndex(..) )
 import Data.Array.Accelerate.Array.Sugar                        hiding ( Foreign )
 import Data.Array.Accelerate.Error
+import Data.Array.Accelerate.Interpreter                        ( evalPrim, evalPrimConst, evalPrj, evalUndef, evalCoerce )
 import Data.Array.Accelerate.Product
 import Data.Array.Accelerate.Type
-import Data.Array.Accelerate.Interpreter                        ( evalPrim, evalPrimConst, evalPrj, evalUndef, evalCoerce )
 
 import Data.Array.Accelerate.LLVM.AST
 import Data.Array.Accelerate.LLVM.Array.Data
 import Data.Array.Accelerate.LLVM.CodeGen.Environment           ( Gamma )
 import Data.Array.Accelerate.LLVM.Execute.Async
 import Data.Array.Accelerate.LLVM.Execute.Environment
+import Data.Array.Accelerate.LLVM.Extra
 import Data.Array.Accelerate.LLVM.Link
 
 -- library
@@ -411,10 +412,10 @@ executeOpenAcc !topAcc !aenv = travA topAcc
     unzip tix (Array sh adata) = Array sh $ go tix (eltType @t) adata
       where
         go :: TupleIdx v e -> TupleType t' -> ArrayData t' -> ArrayData (EltRepr e)
-        go (SuccTupIdx ix) (TypeRpair t _) (AD_Pair x _)           = go ix t x
+        go (SuccTupIdx ix) (TypeRpair t _) (AD_Pair x _)  = go ix t x
         go ZeroTupIdx      (TypeRpair _ t) (AD_Pair _ x)
-          | Just Refl <- matchTupleType t (eltType @e) = x
-        go _ _ _                                                   = $internalError "unzip" "inconsistent valuation"
+          | Just Refl <- matchTupleType t (eltType @e)    = x
+        go _ _ _                                          = $internalError "unzip" "inconsistent valuation"
 
     -- Can the permutation function write directly into the results array?
     inplace :: ExecOpenAcc arch aenv a -> Bool
@@ -477,7 +478,7 @@ executeOpenExp rootExp env aenv = travE rootExp
       Intersect sh1 sh2         -> lift2 (newFull $$ intersect) (travE sh1) (travE sh2)
       Union sh1 sh2             -> lift2 (newFull $$ union) (travE sh1) (travE sh2)
       ShapeSize sh              -> lift1 (newFull . size)  (travE sh)
-      Shape acc                 -> lift1 (newFull . shape) (travA acc)
+      Shape acc                 -> liftF1 shape (travA acc)
       Index acc ix              -> lift2 index (travA acc) (travE ix)
       LinearIndex acc ix        -> lift2 indexRemoteAsync (travA acc) (travE ix)
       Coerce x                  -> lift1 (newFull . evalCoerce) (travE x)
@@ -536,7 +537,7 @@ executeOpenExp rootExp env aenv = travE rootExp
       where
         extend :: SliceIndex slix sl co sh -> slix -> sl -> sh
         extend SliceNil              ()        ()       = ()
-        extend (SliceAll sliceIdx)   (slx, ()) (sh, sz) = (extend sliceIdx slx sh, sz)
+        extend (SliceAll   sliceIdx) (slx, ()) (sh, sz) = (extend sliceIdx slx sh, sz)
         extend (SliceFixed sliceIdx) (slx, sz) sh       = (extend sliceIdx slx sh, sz)
 
     index :: Shape sh => Array sh e -> sh -> Par arch (FutureR arch e)
@@ -589,9 +590,4 @@ liftF2 f x y = do
   y' <- y
   fork $ put r =<< liftM2 f (get x') (get y')
   return r
-
-{-# INLINE ($$) #-}
-infixr 0 $$
-($$) :: (b -> a) -> (c -> d -> b) -> c -> d -> a
-(f $$ g) x y = f (g x y)
 

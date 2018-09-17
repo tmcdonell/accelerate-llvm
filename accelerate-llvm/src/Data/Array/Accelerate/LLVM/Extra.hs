@@ -19,7 +19,7 @@ import Data.Array.Accelerate.Error
 
 -- standard library
 import Data.Word
-import qualified Data.Bits as B
+import qualified Data.Bits                                          as B
 
 
 -- | The number of bits in a type
@@ -46,4 +46,20 @@ fromBool False = 0
 toBool :: Integral i => i -> Bool
 toBool 0 = False
 toBool _ = True
+
+
+{-# INLINE ($$) #-}
+infixr 0 $$
+($$) :: (a -> b) -> (c -> d -> a) -> c -> d -> b
+(f $$ g) x y = f (g x y)
+
+{-# INLINE ($$$) #-}
+infixr 0 $$$
+($$$) :: (a -> b) -> (c -> d -> e -> a) -> c -> d -> e -> b
+(f $$$ g) x y z = f (g x y z)
+
+{-# INLINE ($$$$) #-}
+infixr 0 $$$$
+($$$$) :: (a -> b) -> (c -> d -> e -> f -> a) -> c -> d -> e -> f -> b
+(f $$$$ g) x y z w = f (g x y z w)
 

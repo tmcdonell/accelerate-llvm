@@ -60,7 +60,7 @@ divideWork
 divideWork
   | Just Refl <- matchShapeType @DIM0 @sh = divideWork0
   | Just Refl <- matchShapeType @DIM1 @sh = divideWork1
-  | otherwise                                                     = divideWorkN
+  | otherwise                             = divideWorkN
   --
   -- It is slightly faster to use lists instead of a Sequence here (though the
   -- difference is <1us on 'divideWork empty (Z:.2000) nop 8 32'). However,
