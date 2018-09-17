@@ -354,7 +354,7 @@ executeOpenAcc !topAcc !aenv = travA topAcc
 
     travT :: Atuple (ExecOpenAcc arch aenv) t -> Par arch (FutureR arch t)
     travT NilAtup        = newFull ()
-    travT (SnocAtup t a) = liftF2 (,) (travT t) (travA a)
+    travT (SnocAtup t a) = liftF2 (,) (travT t) (spawn $ travA a)
 
     unit :: Elt t => ExecExp arch aenv t -> Par arch (FutureR arch (Scalar t))
     unit x = do
