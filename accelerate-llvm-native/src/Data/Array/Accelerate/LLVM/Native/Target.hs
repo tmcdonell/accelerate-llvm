@@ -37,8 +37,8 @@ import System.IO.Unsafe
 -- | Native machine code JIT execution target
 --
 data Native = Native
-  { linkCache     :: !LinkCache
-  , workers       :: !Workers
+  { linkCache     :: {-# UNPACK #-} !LinkCache
+  , workers       :: {-# UNPACK #-} !Workers
   , segmentOffset :: !Bool
   }
 

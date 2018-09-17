@@ -45,10 +45,7 @@ import qualified Data.Vector.Unboxed.Mutable                        as M
 -- parameter to the apply action can be used to access the chunks linearly (for
 -- example, this is useful when evaluating non-commutative operations).
 --
-{-# SPECIALISE divideWork :: Int -> Int -> DIM0 -> DIM0 -> (Int -> DIM0 -> DIM0 -> a) -> Seq a #-}
-{-# SPECIALISE divideWork :: Int -> Int -> DIM1 -> DIM1 -> (Int -> DIM1 -> DIM1 -> a) -> Seq a #-}
--- {-# SPECIALISE divideWork :: Int -> Int -> DIM2 -> DIM2 -> (Int -> DIM2 -> DIM2 -> a) -> Seq a #-}
--- {-# SPECIALISE divideWork :: Int -> Int -> DIM3 -> DIM3 -> (Int -> DIM3 -> DIM3 -> a) -> Seq a #-}
+{-# INLINE divideWork #-}
 divideWork
     :: forall sh a. Shape sh
     => Int                        -- #subdivisions (hint)
@@ -66,9 +63,11 @@ divideWork
   -- difference is <1us on 'divideWork empty (Z:.2000) nop 8 32'). However,
   -- later operations will benefit from more efficient append, etc.
 
+{-# INLINE divideWork0 #-}
 divideWork0 :: Int -> Int -> DIM0 -> DIM0 -> (Int -> DIM0 -> DIM0 -> a) -> Seq a
 divideWork0 _ _ Z Z action = Seq.singleton (action 0 Z Z)
 
+{-# INLINE divideWork1 #-}
 divideWork1 :: Int -> Int -> DIM1 -> DIM1 -> (Int -> DIM1 -> DIM1 -> a) -> Seq a
 divideWork1 !pieces !minsize (Z :. (!from)) (Z :. (!to)) action =
   let
@@ -109,6 +108,7 @@ findSplitPoint1 !u !v !minsize =
       Just (d+u, v-a+d)
 
 
+{-# INLINEABLE divideWorkN #-}
 divideWorkN :: Shape sh => Int -> Int -> sh -> sh -> (Int -> sh -> sh -> a) -> Seq a
 divideWorkN !pieces !minsize !from !to action =
   let
@@ -139,7 +139,7 @@ divideWorkN !pieces !minsize !from !to action =
 -- Determine if and where to split the given index range. Returns new start and
 -- end indices if found.
 --
-{-# INLINE findSplitPointN #-}
+{-# INLINEABLE findSplitPointN #-}
 findSplitPointN
     :: U.Vector Int           -- start
     -> U.Vector Int           -- end

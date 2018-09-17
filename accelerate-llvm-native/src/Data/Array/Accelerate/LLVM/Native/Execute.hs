@@ -711,21 +711,23 @@ aforeignOp name asm arr = do
 -- Skeleton execution
 -- ------------------
 
+{-# INLINE (!#) #-}
 (!#) :: Lifetime FunctionTable -> ShortByteString -> Function
 (!#) exe name
   = fromMaybe ($internalError "lookupFunction" ("function not found: " ++ S8.unpack name))
   $ lookupFunction name exe
 
+{-# INLINE lookupFunction #-}
 lookupFunction :: ShortByteString -> Lifetime FunctionTable -> Maybe Function
 lookupFunction name nativeExecutable = do
   find (\(n,_) -> n == name) (functionTable (unsafeGetValue nativeExecutable))
 
+{-# INLINE andThen #-}
 andThen :: (Maybe a -> t) -> a -> t
 andThen f g = f (Just g)
 
 
-{-# SPECIALISE scheduleOp :: Marshalable (Par Native) args => Function -> Gamma aenv -> Val aenv -> DIM0 -> args -> Maybe Action -> Par Native () #-}
-{-# SPECIALISE scheduleOp :: Marshalable (Par Native) args => Function -> Gamma aenv -> Val aenv -> DIM1 -> args -> Maybe Action -> Par Native () #-}
+{-# INLINE scheduleOp #-}
 scheduleOp
     :: forall sh aenv args. (Shape sh, Marshalable IO sh, Marshalable (Par Native) args)
     => Function
@@ -749,8 +751,7 @@ scheduleOp fun gamma aenv sz args done = do
 -- Schedule an operation over the entire iteration space, specifying the number
 -- of partitions and minimum dimension size.
 --
-{-# SPECIALISE scheduleOpWith :: Marshalable (Par Native) args => Int -> Int -> Function -> Gamma aenv -> Val aenv -> DIM0 -> args -> Maybe Action -> Par Native () #-}
-{-# SPECIALISE scheduleOpWith :: Marshalable (Par Native) args => Int -> Int -> Function -> Gamma aenv -> Val aenv -> DIM1 -> args -> Maybe Action -> Par Native () #-}
+{-# INLINE scheduleOpWith #-}
 scheduleOpWith
     :: (Shape sh, Marshalable IO sh, Marshalable (Par Native) args)
     => Int            -- # subdivisions (hint)
@@ -767,8 +768,7 @@ scheduleOpWith splits minsize fun gamma aenv sz args done = do
   job        <- mkJob splits minsize fun gamma aenv empty sz args done
   liftIO $ schedule workers job
 
-{-# SPECIALISE scheduleOpUsing :: Marshalable (Par Native) args => Seq (Int, DIM0, DIM0) -> Function -> Gamma aenv -> Val aenv -> args -> Maybe Action -> Par Native () #-}
-{-# SPECIALISE scheduleOpUsing :: Marshalable (Par Native) args => Seq (Int, DIM1, DIM1) -> Function -> Gamma aenv -> Val aenv -> args -> Maybe Action -> Par Native () #-}
+{-# INLINE scheduleOpUsing #-}
 scheduleOpUsing
     :: (Shape sh, Marshalable IO sh, Marshalable (Par Native) args)
     => Seq (Int, sh, sh)
@@ -783,8 +783,7 @@ scheduleOpUsing ranges fun gamma aenv args jobDone = do
   job        <- mkJobUsing ranges fun gamma aenv args jobDone
   liftIO $ schedule workers job
 
-{-# SPECIALISE mkJob :: Marshalable (Par Native) args => Int -> Int -> Function -> Gamma aenv -> Val aenv -> DIM0 -> DIM0 -> args -> Maybe Action -> Par Native Job #-}
-{-# SPECIALISE mkJob :: Marshalable (Par Native) args => Int -> Int -> Function -> Gamma aenv -> Val aenv -> DIM1 -> DIM1 -> args -> Maybe Action -> Par Native Job #-}
+{-# INLINE mkJob #-}
 mkJob :: (Shape sh, Marshalable IO sh, Marshalable (Par Native) args)
       => Int
       -> Int
@@ -799,8 +798,7 @@ mkJob :: (Shape sh, Marshalable IO sh, Marshalable (Par Native) args)
 mkJob splits minsize fun gamma aenv from to args jobDone =
   mkJobUsing (divideWork splits minsize from to (,,)) fun gamma aenv args jobDone
 
-{-# SPECIALISE mkJobUsing :: Marshalable (Par Native) args => Seq (Int, DIM0, DIM0) -> Function -> Gamma aenv -> Val aenv -> args -> Maybe Action -> Par Native Job #-}
-{-# SPECIALISE mkJobUsing :: Marshalable (Par Native) args => Seq (Int, DIM1, DIM1) -> Function -> Gamma aenv -> Val aenv -> args -> Maybe Action -> Par Native Job #-}
+{-# INLINE mkJobUsing #-}
 mkJobUsing
       :: (Shape sh, Marshalable IO sh, Marshalable (Par Native) args)
       => Seq (Int, sh, sh)
@@ -814,8 +812,7 @@ mkJobUsing ranges fun@(name,_) gamma aenv args jobDone = do
   jobTasks <- mkTasksUsing ranges fun gamma aenv args
   liftIO    $ timed name Job {..}
 
-{-# SPECIALISE mkJobUsingIndex :: Marshalable (Par Native) args => Seq (Int, DIM0, DIM0) -> Function -> Gamma aenv -> Val aenv -> args -> Maybe Action -> Par Native Job #-}
-{-# SPECIALISE mkJobUsingIndex :: Marshalable (Par Native) args => Seq (Int, DIM1, DIM1) -> Function -> Gamma aenv -> Val aenv -> args -> Maybe Action -> Par Native Job #-}
+{-# INLINE mkJobUsingIndex #-}
 mkJobUsingIndex
       :: (Shape sh, Marshalable IO sh, Marshalable (Par Native) args)
       => Seq (Int, sh, sh)
@@ -829,8 +826,7 @@ mkJobUsingIndex ranges fun@(name,_) gamma aenv args jobDone = do
   jobTasks <- mkTasksUsingIndex ranges fun gamma aenv args
   liftIO    $ timed name Job {..}
 
-{-# SPECIALISE mkTasksUsing :: Marshalable (Par Native) args => Seq (Int, DIM0, DIM0) -> Function -> Gamma aenv -> Val aenv -> args -> Par Native (Seq Action) #-}
-{-# SPECIALISE mkTasksUsing :: Marshalable (Par Native) args => Seq (Int, DIM1, DIM1) -> Function -> Gamma aenv -> Val aenv -> args -> Par Native (Seq Action) #-}
+{-# INLINE mkTasksUsing #-}
 mkTasksUsing
       :: (Shape sh, Marshalable IO sh, Marshalable (Par Native) args)
       => Seq (Int, sh, sh)
@@ -845,8 +841,7 @@ mkTasksUsing ranges (name, f) gamma aenv args = do
     sched $ printf "%s (%s) -> (%s)" (S8.unpack name) (showShape u) (showShape v)
     callFFI f retVoid =<< marshal (Proxy::Proxy Native) (u, v, argv)
 
-{-# SPECIALISE mkTasksUsingIndex :: Marshalable (Par Native) args => Seq (Int, DIM0, DIM0) -> Function -> Gamma aenv -> Val aenv -> args -> Par Native (Seq Action) #-}
-{-# SPECIALISE mkTasksUsingIndex :: Marshalable (Par Native) args => Seq (Int, DIM1, DIM1) -> Function -> Gamma aenv -> Val aenv -> args -> Par Native (Seq Action) #-}
+{-# INLINE mkTasksUsingIndex #-}
 mkTasksUsingIndex
       :: (Shape sh, Marshalable IO sh, Marshalable (Par Native) args)
       => Seq (Int, sh, sh)
@@ -865,6 +860,7 @@ mkTasksUsingIndex ranges (name, f) gamma aenv args = do
 -- Standard C functions
 -- --------------------
 
+{-# INLINE memset #-}
 memset :: Ptr Word8 -> Word8 -> Int -> IO ()
 memset p w s = c_memset p (fromIntegral w) (fromIntegral s) >> return ()
 

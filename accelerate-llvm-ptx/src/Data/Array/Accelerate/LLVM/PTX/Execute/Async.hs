@@ -80,19 +80,19 @@ instance Async PTX where
   newtype Par PTX a = Par { runPar :: ReaderT ParState (LLVM PTX) a }
     deriving ( Functor, Applicative, Monad, MonadIO, MonadReader ParState, MonadState PTX )
 
-  {-# INLINEABLE new     #-}
-  {-# INLINEABLE newFull #-}
+  {-# INLINE new     #-}
+  {-# INLINE newFull #-}
   new       = Future <$> liftIO (newIORef Empty)
   newFull v = Future <$> liftIO (newIORef (Full v))
 
-  {-# INLINEABLE spawn #-}
+  {-# INLINE spawn #-}
   spawn m = do
     s' <- liftPar Stream.create
     r  <- local (const (s', Nothing)) m
     liftIO (Stream.destroy s')
     return r
 
-  {-# INLINEABLE fork #-}
+  {-# INLINE fork #-}
   fork m = do
     s' <- liftPar (Stream.create)
     () <- local (const (s', Nothing)) m
@@ -102,7 +102,7 @@ instance Async PTX where
   -- a new event in the current execution stream and once that is filled we can
   -- transition the IVar to Full.
   --
-  {-# INLINEABLE put #-}
+  {-# INLINE put #-}
   put (Future ref) v = do
     stream <- asks ptxStream
     kernel <- asks ptxKernel
@@ -118,7 +118,7 @@ instance Async PTX where
   -- thread waiting on a value; if we get an empty IVar at this point, something
   -- has gone wrong.
   --
-  {-# INLINEABLE get #-}
+  {-# INLINE get #-}
   get (Future ref) = do
     stream <- asks ptxStream
     liftIO  $ do
@@ -138,7 +138,7 @@ instance Async PTX where
           return v
         Empty           -> $internalError "get" "blocked on an IVar"
 
-  {-# INLINEABLE block #-}
+  {-# INLINE block #-}
   block = liftIO . wait
 
 
@@ -151,7 +151,7 @@ liftPar = Par . lift
 -- | Block the calling _host_ thread until the value offered by the future is
 -- available.
 --
-{-# INLINEABLE wait #-}
+{-# INLINE wait #-}
 wait :: Future a -> IO a
 wait (Future ref) = do
   ivar <- readIORef ref

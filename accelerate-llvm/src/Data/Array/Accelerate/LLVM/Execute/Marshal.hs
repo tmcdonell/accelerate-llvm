@@ -39,6 +39,7 @@ import qualified Data.DList                                     as DL
 
 -- | Convert function arguments into stream a form suitable for function calls
 --
+{-# INLINE marshal #-}
 marshal :: Marshalable arch m args => Proxy arch -> args -> m [ArgR arch]
 marshal proxy args = DL.toList `fmap` marshal' proxy args
 
@@ -62,41 +63,50 @@ class Monad m => Marshalable arch m a where
   marshal' :: Proxy arch -> a -> m (DList (ArgR arch))
 
 instance Monad m => Marshalable arch m () where
+  {-# INLINE marshal' #-}
   marshal' _ () = return DL.empty
 
 instance (Marshalable arch m a, Marshalable arch m b) => Marshalable arch m (a, b) where
+  {-# INLINE marshal' #-}
   marshal' proxy (a, b) =
     DL.concat `fmap` sequence [marshal' proxy a, marshal' proxy b]
 
 instance (Marshalable arch m a, Marshalable arch m b, Marshalable arch m c) => Marshalable arch m (a, b, c) where
+  {-# INLINE marshal' #-}
   marshal' proxy (a, b, c) =
     DL.concat `fmap` sequence [marshal' proxy a, marshal' proxy b, marshal' proxy c]
 
 instance (Marshalable arch m a, Marshalable arch m b, Marshalable arch m c, Marshalable arch m d) => Marshalable arch m (a, b, c, d) where
+  {-# INLINE marshal' #-}
   marshal' proxy (a, b, c, d) =
     DL.concat `fmap` sequence [marshal' proxy a, marshal' proxy b, marshal' proxy c, marshal' proxy d]
 
 instance (Marshalable arch m a, Marshalable arch m b, Marshalable arch m c, Marshalable arch m d, Marshalable arch m e)
     => Marshalable arch m (a, b, c, d, e) where
+  {-# INLINE marshal' #-}
   marshal' proxy (a, b, c, d, e) =
     DL.concat `fmap` sequence [marshal' proxy a, marshal' proxy b, marshal' proxy c, marshal' proxy d, marshal' proxy e]
 
 instance (Marshalable arch m a, Marshalable arch m b, Marshalable arch m c, Marshalable arch m d, Marshalable arch m e, Marshalable arch m f)
     => Marshalable arch m (a, b, c, d, e, f) where
+  {-# INLINE marshal' #-}
   marshal' proxy (a, b, c, d, e, f) =
     DL.concat `fmap` sequence [marshal' proxy a, marshal' proxy b, marshal' proxy c, marshal' proxy d, marshal' proxy e, marshal' proxy f]
 
 instance (Marshalable arch m a, Marshalable arch m b, Marshalable arch m c, Marshalable arch m d, Marshalable arch m e, Marshalable arch m f, Marshalable arch m g)
     => Marshalable arch m (a, b, c, d, e, f, g) where
+  {-# INLINE marshal' #-}
   marshal' proxy (a, b, c, d, e, f, g) =
     DL.concat `fmap` sequence [marshal' proxy a, marshal' proxy b, marshal' proxy c, marshal' proxy d, marshal' proxy e, marshal' proxy f, marshal' proxy g]
 
 instance (Marshalable arch m a, Marshalable arch m b, Marshalable arch m c, Marshalable arch m d, Marshalable arch m e, Marshalable arch m f, Marshalable arch m g, Marshalable arch m h)
     => Marshalable arch m (a, b, c, d, e, f, g, h) where
+  {-# INLINE marshal' #-}
   marshal' proxy (a, b, c, d, e, f, g, h) =
     DL.concat `fmap` sequence [marshal' proxy a, marshal' proxy b, marshal' proxy c, marshal' proxy d, marshal' proxy e, marshal' proxy f, marshal' proxy g, marshal' proxy h]
 
 instance Marshalable arch m a => Marshalable arch m [a] where
+  {-# INLINE marshal' #-}
   marshal' proxy = fmap DL.concat . mapM (marshal' proxy)
 
 -- instance Monad m => Marshalable arch m (DList (ArgR arch)) where
@@ -107,6 +117,7 @@ instance Marshalable arch m a => Marshalable arch m [a] where
 
 instance (Shape sh, Marshalable arch m Int, Marshalable arch m (ArrayData (EltRepr e)))
     => Marshalable arch m (Array sh e) where
+  {-# INLINE marshal' #-}
   marshal' proxy (Array sh adata) =
     DL.concat `fmap` sequence [marshal' proxy adata, go proxy (eltType @sh) sh]
     where
@@ -119,6 +130,7 @@ instance (Shape sh, Marshalable arch m Int, Marshalable arch m (ArrayData (EltRe
 
 instance {-# INCOHERENT #-} (Shape sh, Monad m, Marshalable arch m Int)
     => Marshalable arch m sh where
+  {-# INLINE marshal' #-}
   marshal' proxy sh = go proxy (eltType @sh) (fromElt sh)
     where
       go :: Proxy arch -> TupleType a -> a -> m (DList (ArgR arch))

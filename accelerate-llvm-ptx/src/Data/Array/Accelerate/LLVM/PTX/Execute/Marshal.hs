@@ -63,33 +63,42 @@ type instance M.ArgR PTX  = CUDA.FunParam
 
 
 instance Monad m => M.Marshalable PTX m (DList CUDA.FunParam) where
+  {-# INLINE marshal' #-}
   marshal' _ = return
 
 instance Monad m => M.Marshalable PTX m Int where
+  {-# INLINE marshal' #-}
   marshal' _ x = return $ DL.singleton (CUDA.VArg x)
 
 instance Monad m => M.Marshalable PTX m Int32 where
+  {-# INLINE marshal' #-}
   marshal' _ x = return $ DL.singleton (CUDA.VArg x)
 
 instance {-# OVERLAPS #-} M.Marshalable PTX (Par PTX) (Gamma aenv, Val aenv) where
+  {-# INLINE marshal' #-}
   marshal' proxy (gamma, aenv)
     = fmap DL.concat
     $ mapM (\(_, Idx' idx) -> liftPar . M.marshal' proxy =<< get (prj idx aenv)) (IM.elems gamma)
 
 instance (M.Marshalable PTX (Par PTX) a) => M.Marshalable PTX (Par PTX) (Future a) where
+  {-# INLINE marshal' #-}
   marshal' proxy future = M.marshal' proxy =<< get future
 
 instance ArrayElt e => M.Marshalable PTX (Par PTX) (ArrayData e) where
+  {-# INLINE marshal' #-}
   marshal' proxy adata = liftPar (M.marshal' proxy adata)
 
 instance ArrayElt e => M.Marshalable PTX (LLVM PTX) (ArrayData e) where
+  {-# INLINE marshal' #-}
   marshal' _ adata = go arrayElt adata
     where
+      {-# INLINE wrap #-}
       wrap :: forall e' a. (ArrayElt e', ArrayPtrs e' ~ Ptr a, Typeable e', Typeable a, Storable a)
            => ArrayData e'
            -> LLVM PTX (DList CUDA.FunParam)
       wrap ad = fmap (DL.singleton . CUDA.VArg) (unsafeGetDevicePtr ad)
 
+      {-# INLINE go #-}
       go :: ArrayEltR e' -> ArrayData e' -> LLVM PTX (DList CUDA.FunParam)
       go ArrayEltRunit    !_  = return DL.empty
       go ArrayEltRint     !ad = wrap ad
@@ -118,6 +127,7 @@ instance ArrayElt e => M.Marshalable PTX (LLVM PTX) (ArrayData e) where
 -- the garbage collector does not try to evict the array in the middle of
 -- a computation.
 --
+{-# INLINE unsafeGetDevicePtr #-}
 unsafeGetDevicePtr
     :: (ArrayElt e, ArrayPtrs e ~ Ptr a, Typeable e, Typeable a, Storable a)
     => ArrayData e

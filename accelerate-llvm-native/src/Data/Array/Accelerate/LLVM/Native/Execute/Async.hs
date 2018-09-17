@@ -43,7 +43,7 @@ import qualified Data.Sequence                                      as Seq
 -- The worker threads execute the computation, while the calling thread
 -- effectively sleeps waiting for the result.
 --
-{-# INLINEABLE evalPar #-}
+{-# INLINE evalPar #-}
 evalPar :: Par Native a -> LLVM Native a
 evalPar work = do
   result <- liftIO newEmptyMVar
@@ -121,7 +121,7 @@ evalParIO native@Native{..} work =
 -- | The value represented by a future is now available. Push any blocked
 -- continuations to the worker threads.
 --
-{-# INLINEABLE putIO #-}
+{-# INLINE putIO #-}
 putIO :: Workers -> Future a -> a -> IO ()
 putIO workers (Future ref) v = do
   ks <- atomicModifyIORef' ref $ \case

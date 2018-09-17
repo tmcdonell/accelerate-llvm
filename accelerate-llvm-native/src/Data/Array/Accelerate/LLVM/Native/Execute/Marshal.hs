@@ -53,29 +53,28 @@ type instance M.ArgR Native = FFI.Arg
 
 
 instance Monad m => M.Marshalable Native m (DList FFI.Arg) where
+  {-# INLINE marshal' #-}
   marshal' _ = return
 
 instance Monad m => M.Marshalable Native m Int where
+  {-# INLINE marshal' #-}
   marshal' _ x = return $ DL.singleton (FFI.argInt x)
 
 instance {-# OVERLAPS #-} M.Marshalable Native (Par Native) (Gamma aenv, Val aenv) where
+  {-# INLINE marshal' #-}
   marshal' proxy (gamma, aenv)
     = fmap DL.concat
     $ mapM (\(_, Idx' idx) -> liftPar . M.marshal' proxy =<< get (prj idx aenv)) (IM.elems gamma)
 
--- instance M.Marshalable Native (Gamma aenv, Val aenv) where
---   marshal' t s (gamma, aenv)
---     = fmap DL.concat
---     $ mapM (\(_, Idx' idx) -> M.marshal' t s (sync (aprj idx aenv))) (IM.elems gamma)
---     where
---       sync (AsyncR () a) = a
-
 instance ArrayElt e => M.Marshalable Native (Par Native) (ArrayData e) where
+  {-# INLINE marshal' #-}
   marshal' proxy adata = liftPar (M.marshal' proxy adata)
 
 instance ArrayElt e => M.Marshalable Native (LLVM Native) (ArrayData e) where
+  {-# INLINE marshal' #-}
   marshal' _ adata = return $ marshalR arrayElt adata
     where
+      {-# INLINE marshalR #-}
       marshalR :: ArrayEltR e' -> ArrayData e' -> DList FFI.Arg
       marshalR ArrayEltRunit    !_  = DL.empty
       marshalR ArrayEltRint     !ad = DL.singleton $ FFI.argPtr (ptrsOfArrayData ad)

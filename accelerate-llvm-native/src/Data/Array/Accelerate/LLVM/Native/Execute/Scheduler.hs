@@ -49,11 +49,11 @@ data Job = Job
   }
 
 data Workers = Workers
-  { workerCount       :: {-# UNPACK #-} !Int    -- number of worker threads (length workerThreadIds)
-  , workerThreadIds   :: ![ThreadId]            -- to send signals to / kill
-  , workerActive      :: !(MVar ())             -- fill to signal to the threads to wake up
-  , workerTaskQueue   :: !(LinkedQueue Task)    -- tasks currently being executed; may be from different jobs
-  , workerException   :: !(MVar (Seq (ThreadId, SomeException)))  -- XXX: what should we do with these?
+  { workerCount       :: {-# UNPACK #-} !Int                    -- number of worker threads (length workerThreadIds)
+  , workerActive      :: {-# UNPACK #-} !(MVar ())              -- fill to signal to the threads to wake up
+  , workerTaskQueue   :: {-# UNPACK #-} !(LinkedQueue Task)     -- tasks currently being executed; may be from different jobs
+  , workerException   :: {-# UNPACK #-} !(MVar (Seq (ThreadId, SomeException)))   -- XXX: what should we do with these?
+  , workerThreadIds   :: ![ThreadId]                                              -- to send signals to / kill
   }
 
 

@@ -38,6 +38,7 @@ data ValR arch env where
 
 -- Projection of a value from a valuation using a de Bruijn index.
 --
+{-# INLINEABLE prj #-}
 prj :: Idx env t -> ValR arch env -> FutureR arch t
 prj ZeroIdx       (Push _   x) = x
 prj (SuccIdx idx) (Push val _) = prj idx val
