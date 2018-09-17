@@ -74,7 +74,7 @@ import qualified Data.IntMap.Base                                   as IM
 #else
 import qualified Data.IntMap                                        as IM
 #endif
-import Prelude                                                      hiding ( exp, map, sum, scanl, scanl1, scanr, scanr1, init, unzip )
+import Prelude                                                      hiding ( exp, map, sum, scanl, scanl1, scanr, scanr1, init, unzip, uncurry )
 import qualified Prelude                                            as P
 
 
@@ -645,19 +645,73 @@ embedPreOpenExp arch exp env aenv aenvq =
     fromIndex :: Shape sh => TExpQ sh -> TExpQ Int -> TExpQ sh
     fromIndex sh ix = [|| Sugar.fromIndex $$sh $$ix ||]
 
-    intersect :: Shape sh => TExpQ sh -> TExpQ sh -> TExpQ sh
-    intersect sh1 sh2 = [|| Sugar.intersect $$sh1 $$sh2 ||]
+    intersect :: forall sh. Shape sh => TExpQ sh -> TExpQ sh -> TExpQ sh
+    -- intersect sh1 sh2 = [|| Sugar.intersect $$sh1 $$sh2 ||]
+    intersect sh1 sh2 = do
+      let
+          go :: TupleType t -> Q (TH.PatQ, [TH.Name])
+          go TypeRunit          = return (TH.conP 'Z [], [])
+          go (TypeRpair sh sz)  = do
+            (psh, sh')  <- go sh
+            (psz, sz')  <- go sz
+            return (TH.conP '(:.) [psh, psz], sh'++sz')
+          go TypeRscalar{}
+            = do i' <- TH.newName "sh"
+                 return (TH.varP i', [i'])
+      --
+      (pat1, sh1')  <- go (eltType @sh)
+      (pat2, sh2')  <- go (eltType @sh)
+      TH.unsafeTExpCoerce
+        $ TH.caseE (TH.unTypeQ sh1) [ TH.match pat1 (TH.normalB (
+          TH.caseE (TH.unTypeQ sh2) [ TH.match pat2 (TH.normalB ( P.foldl (\a b -> [| $a :. $b |]) (TH.conE 'Z)
+                                                                $ P.zipWith (\a b -> [| min $(TH.varE a) $(TH.varE b) |]) sh1' sh2')) [] ])) [] ]
 
     union :: Shape sh => TExpQ sh -> TExpQ sh -> TExpQ sh
     union sh1 sh2 = [|| Sugar.union $$sh1 $$sh2 ||]
 
-    shapeSize :: Shape sh => TExpQ sh -> TExpQ Int
-    shapeSize sh = [|| Sugar.size $$sh ||]
+    shapeSize :: forall sh. Shape sh => TExpQ sh -> TExpQ Int
+    -- shapeSize sh = [|| Sugar.size $$sh ||]
+    shapeSize sh = do
+      let
+          go :: TupleType t -> Q (TH.PatQ, [TH.Name])
+          go TypeRunit          = return (TH.conP 'Z [], [])
+          go (TypeRpair th tz)  = do
+            (psh, sh')  <- go th
+            (psz, sz')  <- go tz
+            return (TH.conP '(:.) [psh, psz], sh'++sz')
+          go TypeRscalar{}
+            = do i' <- TH.newName "sh"
+                 return (TH.varP i', [i'])
+      --
+      (pat, sh')  <- go (eltType @sh)
+      TH.unsafeTExpCoerce
+        $ TH.caseE (TH.unTypeQ sh) [ TH.match pat (TH.normalB (P.foldl (\a b -> [| $a * $(TH.varE b)|]) [| 1 |] sh')) []]
 
     shape :: Shape sh => TExpQ (Par arch (FutureR arch (Array sh e))) -> Q (EventuallyR arch sh)
     shape (later -> arr) =
       flip lift1 arr $ \a ->
-      return $ Now [|| Sugar.shape $$a ||]
+      return $ Now (shape' a)
+
+    shape' :: forall sh e. Shape sh => TExpQ (Array sh e) -> TExpQ sh
+    shape' arr = do
+      let
+          go :: TupleType t -> Q (TH.PatQ, [TH.Name])
+          go TypeRunit          = return (TH.tupP [], [])
+          go (TypeRpair sh sz)  = do
+            (psh, sh')  <- go sh
+            (psz, sz')  <- go sz
+            return (TH.tupP [psh, psz], sh'++sz')
+          go TypeRscalar{}
+            = do i' <- TH.newName "sh"
+                 return (TH.varP i', [i'])
+      --
+      (pat, sh) <- go (eltType @sh)
+      TH.unsafeTExpCoerce $
+        TH.caseE (TH.unTypeQ arr)
+          [ TH.match (TH.conP 'Array [pat, TH.wildP])
+                     (TH.normalB $ foldl (\a b -> [| $a :. $(TH.varE b) |]) (TH.conE 'Z) sh)
+                     []
+          ]
 
     index :: (Shape sh, Elt e) => TExpQ (Par arch (FutureR arch (Array sh e))) -> Q (EventuallyR arch sh) -> Q (EventuallyR arch e)
     index (later -> arr) ix =
@@ -827,16 +881,16 @@ embedPrimFun (PrimToFloating ta tb)      = embedToFloating ta tb
 
 
 embedAdd :: NumType a -> TExpQ (a,a) -> TExpQ a
-embedAdd (IntegralNumType t) x | IntegralDict <- integralDict t = [|| uncurry (+) $$x ||]
-embedAdd (FloatingNumType t) x | FloatingDict <- floatingDict t = [|| uncurry (+) $$x ||]
+embedAdd (IntegralNumType t) | IntegralDict <- integralDict t = uncurry [|| (+) ||]
+embedAdd (FloatingNumType t) | FloatingDict <- floatingDict t = uncurry [|| (+) ||]
 
 embedSub :: NumType a -> TExpQ (a,a) -> TExpQ a
-embedSub (IntegralNumType ty) x | IntegralDict <- integralDict ty = [|| uncurry (-) $$x ||]
-embedSub (FloatingNumType ty) x | FloatingDict <- floatingDict ty = [|| uncurry (-) $$x ||]
+embedSub (IntegralNumType ty) | IntegralDict <- integralDict ty = uncurry [|| (-) ||]
+embedSub (FloatingNumType ty) | FloatingDict <- floatingDict ty = uncurry [|| (-) ||]
 
 embedMul :: NumType a -> TExpQ (a,a) -> TExpQ a
-embedMul (IntegralNumType ty) x | IntegralDict <- integralDict ty = [|| uncurry (*) $$x ||]
-embedMul (FloatingNumType ty) x | FloatingDict <- floatingDict ty = [|| uncurry (*) $$x ||]
+embedMul (IntegralNumType ty) | IntegralDict <- integralDict ty = uncurry [|| (*) ||]
+embedMul (FloatingNumType ty) | FloatingDict <- floatingDict ty = uncurry [|| (*) ||]
 
 embedNeg :: NumType a -> TExpQ a -> TExpQ a
 embedNeg (IntegralNumType ty) x | IntegralDict <- integralDict ty = [|| negate $$x ||]
@@ -851,46 +905,46 @@ embedSig (IntegralNumType ty) x | IntegralDict <- integralDict ty = [|| signum $
 embedSig (FloatingNumType ty) x | FloatingDict <- floatingDict ty = [|| signum $$x ||]
 
 embedQuot :: IntegralType a -> TExpQ (a,a) -> TExpQ a
-embedQuot ty x | IntegralDict <- integralDict ty = [|| uncurry quot $$x ||]
+embedQuot ty | IntegralDict <- integralDict ty = uncurry [|| quot ||]
 
 embedRem :: IntegralType a -> TExpQ (a,a) -> TExpQ a
-embedRem ty x | IntegralDict <- integralDict ty = [|| uncurry rem $$x ||]
+embedRem ty | IntegralDict <- integralDict ty = uncurry [|| rem ||]
 
 embedQuotRem :: IntegralType a -> TExpQ (a,a) -> TExpQ (a,a)
-embedQuotRem ty x | IntegralDict <- integralDict ty = [|| uncurry quotRem $$x ||]
+embedQuotRem ty | IntegralDict <- integralDict ty = uncurry [|| quotRem ||]
 
 embedIDiv :: IntegralType a -> TExpQ (a,a) -> TExpQ a
-embedIDiv ty x | IntegralDict <- integralDict ty = [|| uncurry div $$x ||]
+embedIDiv ty | IntegralDict <- integralDict ty = uncurry [|| div ||]
 
 embedMod :: IntegralType a -> TExpQ (a,a) -> TExpQ a
-embedMod ty x | IntegralDict <- integralDict ty = [|| uncurry mod $$x ||]
+embedMod ty | IntegralDict <- integralDict ty = uncurry [|| mod ||]
 
 embedDivMod :: IntegralType a -> TExpQ (a,a) -> TExpQ (a,a)
-embedDivMod ty x | IntegralDict <- integralDict ty = [|| uncurry divMod $$x ||]
+embedDivMod ty | IntegralDict <- integralDict ty = uncurry [|| divMod ||]
 
 embedBAnd :: IntegralType a -> TExpQ (a,a) -> TExpQ a
-embedBAnd ty x | IntegralDict <- integralDict ty = [|| uncurry (.&.) $$x ||]
+embedBAnd ty | IntegralDict <- integralDict ty = uncurry [|| (.&.) ||]
 
 embedBOr :: IntegralType a -> TExpQ (a,a) -> TExpQ a
-embedBOr ty x | IntegralDict <- integralDict ty = [|| uncurry (.|.) $$x ||]
+embedBOr ty | IntegralDict <- integralDict ty = uncurry [|| (.|.) ||]
 
 embedBXor :: IntegralType a -> TExpQ (a,a) -> TExpQ a
-embedBXor ty x | IntegralDict <- integralDict ty = [|| uncurry xor $$x ||]
+embedBXor ty | IntegralDict <- integralDict ty = uncurry [|| xor ||]
 
 embedBNot :: IntegralType a -> TExpQ a -> TExpQ a
 embedBNot ty x | IntegralDict <- integralDict ty = [|| complement $$x ||]
 
 embedBShiftL :: IntegralType a -> TExpQ (a, Int) -> TExpQ a
-embedBShiftL ty x | IntegralDict <- integralDict ty = [|| uncurry shiftL $$x ||]
+embedBShiftL ty | IntegralDict <- integralDict ty = uncurry [|| shiftL ||]
 
 embedBShiftR :: IntegralType a -> TExpQ (a, Int) -> TExpQ a
-embedBShiftR ty x | IntegralDict <- integralDict ty = [|| uncurry shiftR $$x ||]
+embedBShiftR ty | IntegralDict <- integralDict ty = uncurry [|| shiftR ||]
 
 embedBRotateL :: IntegralType a -> TExpQ (a, Int) -> TExpQ a
-embedBRotateL ty x | IntegralDict <- integralDict ty = [|| uncurry rotateL $$x ||]
+embedBRotateL ty | IntegralDict <- integralDict ty = uncurry [|| rotateL ||]
 
 embedBRotateR :: IntegralType a -> TExpQ (a, Int) -> TExpQ a
-embedBRotateR ty x | IntegralDict <- integralDict ty = [|| uncurry rotateR $$x ||]
+embedBRotateR ty | IntegralDict <- integralDict ty = uncurry [|| rotateR ||]
 
 embedPopCount :: IntegralType a -> TExpQ a -> TExpQ Int
 embedPopCount ty x | IntegralDict <- integralDict ty = [|| popCount $$x ||]
@@ -903,7 +957,7 @@ embedCountTrailingZeros ty x | IntegralDict <- integralDict ty = [|| countTraili
 
 
 embedFDiv :: FloatingType a -> TExpQ (a,a) -> TExpQ a
-embedFDiv ty x | FloatingDict <- floatingDict ty = [|| uncurry (/) $$x ||]
+embedFDiv ty | FloatingDict <- floatingDict ty = uncurry [|| (/) ||]
 
 embedRecip :: FloatingType a -> TExpQ a -> TExpQ a
 embedRecip ty x | FloatingDict <- floatingDict ty = [|| recip $$x ||]
@@ -954,10 +1008,10 @@ embedLog :: FloatingType a -> TExpQ a -> TExpQ a
 embedLog ty x | FloatingDict <- floatingDict ty = [|| log $$x ||]
 
 embedFPow :: FloatingType a -> TExpQ (a,a) -> TExpQ a
-embedFPow ty x | FloatingDict <- floatingDict ty = [|| uncurry (**) $$x ||]
+embedFPow ty | FloatingDict <- floatingDict ty = uncurry [|| (**) ||]
 
 embedLogBase :: FloatingType a -> TExpQ (a,a) -> TExpQ a
-embedLogBase ty x | FloatingDict <- floatingDict ty = [|| uncurry logBase $$x ||]
+embedLogBase ty | FloatingDict <- floatingDict ty = uncurry [|| logBase ||]
 
 embedTruncate :: FloatingType a -> IntegralType b -> TExpQ a -> TExpQ b
 embedTruncate ta tb x
@@ -984,7 +1038,7 @@ embedCeiling ta tb x
   = [|| ceiling $$x ||]
 
 embedAtan2 :: FloatingType a -> TExpQ (a,a) -> TExpQ a
-embedAtan2 ty x | FloatingDict <- floatingDict ty = [|| uncurry atan2 $$x ||]
+embedAtan2 ty | FloatingDict <- floatingDict ty = uncurry [|| atan2 ||]
 
 embedIsNaN :: FloatingType a -> TExpQ a -> TExpQ Bool
 embedIsNaN ty x | FloatingDict <- floatingDict ty = [|| isNaN $$x ||]
@@ -993,50 +1047,50 @@ embedIsInfinite :: FloatingType a -> TExpQ a -> TExpQ Bool
 embedIsInfinite ty x | FloatingDict <- floatingDict ty = [|| isInfinite $$x ||]
 
 embedLt :: SingleType a -> TExpQ (a,a) -> TExpQ Bool
-embedLt (NumSingleType (IntegralNumType ty)) x | IntegralDict <- integralDict ty = [|| uncurry (<) $$x ||]
-embedLt (NumSingleType (FloatingNumType ty)) x | FloatingDict <- floatingDict ty = [|| uncurry (<) $$x ||]
-embedLt (NonNumSingleType ty)                x | NonNumDict   <- nonNumDict ty   = [|| uncurry (<) $$x ||]
+embedLt (NumSingleType (IntegralNumType ty)) | IntegralDict <- integralDict ty = uncurry [|| (<) ||]
+embedLt (NumSingleType (FloatingNumType ty)) | FloatingDict <- floatingDict ty = uncurry [|| (<) ||]
+embedLt (NonNumSingleType ty)                | NonNumDict   <- nonNumDict ty   = uncurry [|| (<) ||]
 
 embedGt :: SingleType a -> TExpQ (a,a) -> TExpQ Bool
-embedGt (NumSingleType (IntegralNumType ty)) x | IntegralDict <- integralDict ty = [|| uncurry (>) $$x ||]
-embedGt (NumSingleType (FloatingNumType ty)) x | FloatingDict <- floatingDict ty = [|| uncurry (>) $$x ||]
-embedGt (NonNumSingleType ty)                x | NonNumDict   <- nonNumDict ty   = [|| uncurry (>) $$x ||]
+embedGt (NumSingleType (IntegralNumType ty)) | IntegralDict <- integralDict ty = uncurry [|| (>) ||]
+embedGt (NumSingleType (FloatingNumType ty)) | FloatingDict <- floatingDict ty = uncurry [|| (>) ||]
+embedGt (NonNumSingleType ty)                | NonNumDict   <- nonNumDict ty   = uncurry [|| (>) ||]
 
 embedLtEq :: SingleType a -> TExpQ (a,a) -> TExpQ Bool
-embedLtEq (NumSingleType (IntegralNumType ty)) x | IntegralDict <- integralDict ty = [|| uncurry (<=) $$x ||]
-embedLtEq (NumSingleType (FloatingNumType ty)) x | FloatingDict <- floatingDict ty = [|| uncurry (<=) $$x ||]
-embedLtEq (NonNumSingleType ty)                x | NonNumDict   <- nonNumDict ty   = [|| uncurry (<=) $$x ||]
+embedLtEq (NumSingleType (IntegralNumType ty)) | IntegralDict <- integralDict ty = uncurry [|| (<=) ||]
+embedLtEq (NumSingleType (FloatingNumType ty)) | FloatingDict <- floatingDict ty = uncurry [|| (<=) ||]
+embedLtEq (NonNumSingleType ty)                | NonNumDict   <- nonNumDict ty   = uncurry [|| (<=) ||]
 
 embedGtEq :: SingleType a -> TExpQ (a,a) -> TExpQ Bool
-embedGtEq (NumSingleType (IntegralNumType ty)) x | IntegralDict <- integralDict ty = [|| uncurry (>=) $$x ||]
-embedGtEq (NumSingleType (FloatingNumType ty)) x | FloatingDict <- floatingDict ty = [|| uncurry (>=) $$x ||]
-embedGtEq (NonNumSingleType ty)                x | NonNumDict   <- nonNumDict ty   = [|| uncurry (>=) $$x ||]
+embedGtEq (NumSingleType (IntegralNumType ty)) | IntegralDict <- integralDict ty = uncurry [|| (>=) ||]
+embedGtEq (NumSingleType (FloatingNumType ty)) | FloatingDict <- floatingDict ty = uncurry [|| (>=) ||]
+embedGtEq (NonNumSingleType ty)                | NonNumDict   <- nonNumDict ty   = uncurry [|| (>=) ||]
 
 embedEq :: SingleType a -> TExpQ (a,a) -> TExpQ Bool
-embedEq (NumSingleType (IntegralNumType ty)) x | IntegralDict <- integralDict ty = [|| uncurry (==) $$x ||]
-embedEq (NumSingleType (FloatingNumType ty)) x | FloatingDict <- floatingDict ty = [|| uncurry (==) $$x ||]
-embedEq (NonNumSingleType ty)                x | NonNumDict   <- nonNumDict ty   = [|| uncurry (==) $$x ||]
+embedEq (NumSingleType (IntegralNumType ty)) | IntegralDict <- integralDict ty = uncurry [|| (==) ||]
+embedEq (NumSingleType (FloatingNumType ty)) | FloatingDict <- floatingDict ty = uncurry [|| (==) ||]
+embedEq (NonNumSingleType ty)                | NonNumDict   <- nonNumDict ty   = uncurry [|| (==) ||]
 
 embedNEq :: SingleType a -> TExpQ (a,a) -> TExpQ Bool
-embedNEq (NumSingleType (IntegralNumType ty)) x | IntegralDict <- integralDict ty = [|| uncurry (/=) $$x ||]
-embedNEq (NumSingleType (FloatingNumType ty)) x | FloatingDict <- floatingDict ty = [|| uncurry (/=) $$x ||]
-embedNEq (NonNumSingleType ty)                x | NonNumDict   <- nonNumDict ty   = [|| uncurry (/=) $$x ||]
+embedNEq (NumSingleType (IntegralNumType ty)) | IntegralDict <- integralDict ty = uncurry [|| (/=) ||]
+embedNEq (NumSingleType (FloatingNumType ty)) | FloatingDict <- floatingDict ty = uncurry [|| (/=) ||]
+embedNEq (NonNumSingleType ty)                | NonNumDict   <- nonNumDict ty   = uncurry [|| (/=) ||]
 
 embedMax :: SingleType a -> TExpQ (a,a) -> TExpQ a
-embedMax (NumSingleType (IntegralNumType ty)) x | IntegralDict <- integralDict ty = [|| uncurry max $$x ||]
-embedMax (NumSingleType (FloatingNumType ty)) x | FloatingDict <- floatingDict ty = [|| uncurry max $$x ||]
-embedMax (NonNumSingleType ty)                x | NonNumDict   <- nonNumDict ty   = [|| uncurry max $$x ||]
+embedMax (NumSingleType (IntegralNumType ty)) | IntegralDict <- integralDict ty = uncurry [|| max ||]
+embedMax (NumSingleType (FloatingNumType ty)) | FloatingDict <- floatingDict ty = uncurry [|| max ||]
+embedMax (NonNumSingleType ty)                | NonNumDict   <- nonNumDict ty   = uncurry [|| max ||]
 
 embedMin :: SingleType a -> TExpQ (a,a) -> TExpQ a
-embedMin (NumSingleType (IntegralNumType ty)) x | IntegralDict <- integralDict ty = [|| uncurry min $$x ||]
-embedMin (NumSingleType (FloatingNumType ty)) x | FloatingDict <- floatingDict ty = [|| uncurry min $$x ||]
-embedMin (NonNumSingleType ty)                x | NonNumDict   <- nonNumDict ty   = [|| uncurry min $$x ||]
+embedMin (NumSingleType (IntegralNumType ty)) | IntegralDict <- integralDict ty = uncurry [|| min ||]
+embedMin (NumSingleType (FloatingNumType ty)) | FloatingDict <- floatingDict ty = uncurry [|| min ||]
+embedMin (NonNumSingleType ty)                | NonNumDict   <- nonNumDict ty   = uncurry [|| min ||]
 
 embedLAnd :: TExpQ (Bool, Bool) -> TExpQ Bool
-embedLAnd x = [|| uncurry (&&) $$x ||]
+embedLAnd = uncurry [|| (&&) ||]
 
 embedLOr  :: TExpQ (Bool, Bool) -> TExpQ Bool
-embedLOr x = [|| uncurry (||) $$x ||]
+embedLOr = uncurry [|| (||) ||]
 
 embedLNot :: TExpQ Bool -> TExpQ Bool
 embedLNot x = [|| not $$x ||]
@@ -1073,4 +1127,11 @@ embedToFloating (FloatingNumType ta) tb x
   | FloatingDict <- floatingDict ta
   , FloatingDict <- floatingDict tb
   = [|| realToFrac $$x ||]
+
+
+-- Utilities
+-- ---------
+
+uncurry :: TExpQ (a -> b -> c) -> TExpQ (a,b) -> TExpQ c
+uncurry f x = [|| case $$x of { (a,b) -> $$f a b } ||]
 
