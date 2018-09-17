@@ -25,14 +25,20 @@ import Data.Array.Accelerate.Lifetime
 
 import Data.Array.Accelerate.LLVM.Compile
 import Data.Array.Accelerate.LLVM.Embed
+import Data.Array.Accelerate.LLVM.Embed.Environment
+import Data.Array.Accelerate.LLVM.Embed.Extra
 
 import Data.Array.Accelerate.LLVM.PTX.Compile
+import Data.Array.Accelerate.LLVM.PTX.Context
+import Data.Array.Accelerate.LLVM.PTX.Execute                       ( )
+import Data.Array.Accelerate.LLVM.PTX.Execute.Async
+import Data.Array.Accelerate.LLVM.PTX.Execute.Environment
 import Data.Array.Accelerate.LLVM.PTX.Link
 import Data.Array.Accelerate.LLVM.PTX.Target
-import Data.Array.Accelerate.LLVM.PTX.Context
 
 import qualified Foreign.CUDA.Driver                                as CUDA
 
+import Data.Typeable
 import Foreign.Ptr
 import GHC.Ptr                                                      ( Ptr(..) )
 import Language.Haskell.TH                                          ( Q, TExp )
@@ -42,6 +48,8 @@ import qualified Data.ByteString.Unsafe                             as B
 import qualified Language.Haskell.TH                                as TH
 import qualified Language.Haskell.TH.Syntax                         as TH
 
+
+{-# SPECIALISE INLINE embedOpenAcc :: (Typeable aenv, Typeable arrs) => PTX -> CompiledOpenAcc PTX aenv arrs -> AvalQ PTX aenv -> TExpQ (Val aenv) -> TExpQ (Par PTX (Future arrs)) #-}
 
 instance Embed PTX where
   embedForTarget = embed
@@ -61,6 +69,13 @@ embed target (ObjectR _ cfg obj) = do
 
   -- Generate the embedded kernel executable. This will load the embedded object
   -- code into the current (at execution time) context.
+  --
+  -- TLM 2018-09-08: It might be nice to lift this to a top-level declaration,
+  -- but we can't be sure that it will always be executed using the same device
+  -- context (runQWith), so just leave it inline with the generated code.
+  -- I guess we should also check that GHC doesn't lift this out into
+  -- a top-level CAF.
+  --
   [|| unsafePerformIO $ do
         jit <- CUDA.loadDataFromPtrEx $$( TH.unsafeTExpCoerce [| Ptr $(TH.litE (TH.StringPrimL (B.unpack obj))) |] ) []
         fun <- newLifetime (FunctionTable $$(listE (map (linkQ 'jit) kmd)))

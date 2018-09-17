@@ -93,6 +93,8 @@ Library
     Data.Array.Accelerate.LLVM.Compile
     Data.Array.Accelerate.LLVM.Compile.Cache
     Data.Array.Accelerate.LLVM.Embed
+    Data.Array.Accelerate.LLVM.Embed.Environment
+    Data.Array.Accelerate.LLVM.Embed.Extra
     Data.Array.Accelerate.LLVM.Execute
     Data.Array.Accelerate.LLVM.Execute.Async
     Data.Array.Accelerate.LLVM.Execute.Environment

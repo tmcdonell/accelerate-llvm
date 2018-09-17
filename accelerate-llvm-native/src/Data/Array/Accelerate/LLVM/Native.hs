@@ -1,7 +1,9 @@
 {-# LANGUAGE BangPatterns         #-}
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE GADTs                #-}
+{-# LANGUAGE ScopedTypeVariables  #-}
 {-# LANGUAGE TemplateHaskell      #-}
+{-# LANGUAGE TypeApplications     #-}
 {-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 -- |
@@ -61,6 +63,9 @@ import Data.Array.Accelerate.Async                                  ( Async, asy
 import Data.Array.Accelerate.Smart                                  ( Acc )
 import Data.Array.Accelerate.Trafo
 
+import Data.Array.Accelerate.LLVM.Embed.Extra
+import Data.Array.Accelerate.LLVM.Embed.Environment
+
 import Data.Array.Accelerate.LLVM.Native.Array.Data                 ( useRemoteAsync )
 import Data.Array.Accelerate.LLVM.Native.Compile                    ( CompiledOpenAfun, compileAcc, compileAfun )
 import Data.Array.Accelerate.LLVM.Native.Embed                      ( embedOpenAcc )
@@ -78,7 +83,6 @@ import Data.Typeable
 import System.IO.Unsafe
 import Text.Printf
 import qualified Language.Haskell.TH                                as TH
-import qualified Language.Haskell.TH.Syntax                         as TH
 
 
 -- Accelerate: LLVM backend for multicore CPUs
@@ -386,28 +390,36 @@ runQ' using target f = do
   -- generate a lambda function with the correct number of arguments and apply
   -- directly to the body expression.
   let
-      go :: Typeable aenv => CompiledOpenAfun Native aenv t -> [TH.PatQ] -> [TH.ExpQ] -> [TH.StmtQ] -> TH.ExpQ
-      go (Alam l) xs as stmts = do
-        x <- TH.newName "x" -- lambda bound variable
-        a <- TH.newName "a" -- local array name
-        s <- TH.bindS (TH.varP a) [| useRemoteAsync $(TH.varE x) |]
-        go l (TH.varP x : xs) (TH.varE a : as) (return s : stmts)
-
-      go (Abody b) xs as stmts = do
-        r <- TH.newName "r" -- result
-        let
-            aenv  = foldr (\a gamma -> [| $gamma `Push` $a |]) [| Empty |] as
-            body  = embedOpenAcc (defaultTarget { segmentOffset = True }) b
+      go :: Typeable aenv
+         => CompiledOpenAfun Native aenv f
+         -> AvalQ Native aenv
+         -> [TH.StmtQ]
+         -> TH.ExpQ
+      go (Alam l) aenv stmts = do
+        x     <- newTName "x"   -- lambda bound variable
+        a     <- newTName "a"   -- local array name
+        TH.lamE [TH.bangP (varP x)] (go l (aenv `ApushQ` varE a) (TH.bindS (varP a) [| useRemoteAsync $(TH.varE (unTName x)) |] : stmts))
+      --
+      go (Abody b) aenv stmts = do
+        r     <- newTName "r"   -- final result
+        aenvq <- newTName "aenv"
         --
-        TH.lamE (reverse xs)
-                [| $using . phase "execute" elapsedP . evalNative ($target { segmentOffset = True }) . evalPar $
-                      $(TH.doE ( reverse stmts ++   -- useRemoteAsync
-                               [ TH.bindS (TH.varP r) [| executeOpenAcc $(TH.unTypeQ body) $aenv |]
-                               , TH.noBindS [| get $(TH.varE r) |]
-                               ]))
-                 |]
+        [| $using
+           . phase "execute" elapsedP
+           . evalNative ($target { segmentOffset = True })
+           . evalPar
+           $ $(TH.doE $ reverse stmts ++      -- useRemoteAsync
+                      [ letS [valD (varP aenvq) (normalB (mkEnv aenv)) []]
+                      , bindS (varP r) (embedOpenAcc (defaultTarget { segmentOffset = True }) b aenv (varE aenvq))
+                      , TH.noBindS [| get $(TH.varE (unTName r)) |]
+                      ])
+         |]
+
+      mkEnv :: AvalQ Native aenv -> TExpQ (Val aenv)
+      mkEnv AemptyQ        = [|| Empty ||]
+      mkEnv (ApushQ env x) = [|| $$(mkEnv env) `Push` $$x ||]
   --
-  go afun [] [] []
+  go afun AemptyQ []
 
 
 -- How the Accelerate program should be evaluated.
@@ -423,9 +435,11 @@ config target = phases
 -- Debugging
 -- =========
 
+{-# INLINEABLE dumpStats #-}
 dumpStats :: MonadIO m => a -> m a
 dumpStats x = dumpSimplStats >> return x
 
+{-# INLINEABLE phase #-}
 phase :: MonadIO m => String -> (Double -> Double -> String) -> m a -> m a
 phase n fmt go = timed dump_phases (\wall cpu -> printf "phase %s: %s" n (fmt wall cpu)) go
 

@@ -60,12 +60,15 @@ import Data.Array.Accelerate.Smart                                  ( Acc )
 import Data.Array.Accelerate.Trafo
 import Data.Array.Accelerate.Debug                                  as Debug
 
+import Data.Array.Accelerate.LLVM.Embed.Extra
+import Data.Array.Accelerate.LLVM.Embed.Environment
+
 import Data.Array.Accelerate.LLVM.PTX.Array.Data
 import Data.Array.Accelerate.LLVM.PTX.Compile
 import Data.Array.Accelerate.LLVM.PTX.Context
 import Data.Array.Accelerate.LLVM.PTX.Embed
 import Data.Array.Accelerate.LLVM.PTX.Execute
-import Data.Array.Accelerate.LLVM.PTX.Execute.Async                 ( Par, evalPar )
+import Data.Array.Accelerate.LLVM.PTX.Execute.Async                 ( Par, evalPar, get )
 import Data.Array.Accelerate.LLVM.PTX.Execute.Environment
 import Data.Array.Accelerate.LLVM.PTX.Link
 import Data.Array.Accelerate.LLVM.PTX.State
@@ -425,7 +428,7 @@ runQAsyncWith f = do
 
 
 runQ' :: Afunction f => TH.ExpQ -> f -> TH.ExpQ
-runQ' using = runQ'_ using (\go -> [| withPool defaultTargetPool (\target -> evalPTX target (evalPar $go)) |])
+runQ' using = runQ'_ using (\go -> [| withPool defaultTargetPool (\ !target -> evalPTX target (evalPar $go)) |])
 
 runQWith' :: Afunction f => TH.ExpQ -> TH.ExpQ -> f -> TH.ExpQ
 runQWith' using target = runQ'_ using (\go -> [| evalPTX $target (evalPar $go) |])
@@ -454,29 +457,39 @@ runQ'_ using k f = do
                  dumpGraph acc
                  evalPTX defaultTarget $
                    phase "compile" (compileAfun acc) >>= dumpStats
-  let
-      go :: Typeable aenv => CompiledOpenAfun PTX aenv t -> [TH.PatQ] -> [TH.ExpQ] -> [TH.StmtQ] -> TH.ExpQ
-      go (Alam l) xs as stmts = do
-        x <- TH.newName "x" -- lambda bound variable
-        a <- TH.newName "a" -- local array name
-        s <- TH.bindS (TH.varP a) [| useRemoteAsync $(TH.varE x) |]
-        go l (TH.bangP (TH.varP x) : xs) (TH.varE a : as) (return s : stmts)
 
-      go (Abody b) xs as stmts = do
-        r <- TH.newName "r" -- result
-        let
-            aenv  = foldr (\a gamma -> [| $gamma `Push` $a |] ) [| Empty |] as
-            body  = embedOpenAcc defaultTarget b
-        --
-        TH.lamE (reverse xs)
-                [| $using (phase "execute" $(k (
-                     TH.doE ( reverse stmts ++
-                            [ TH.bindS (TH.varP r) [| executeOpenAcc $(TH.unTypeQ body) $aenv |]
-                            , TH.noBindS [| copyToHostLazy $(TH.varE r) |]
-                            ]))))
-                 |]
+  -- generate a lambda function with the correct number of arguments and apply
+  -- directly to the body expression
   --
-  go afun [] [] []
+  let
+      go :: Typeable aenv
+         => CompiledOpenAfun PTX aenv f
+         -> AvalQ PTX aenv
+         -> [TH.StmtQ]
+         -> TH.ExpQ
+      go (Alam l) aenv stmts = do
+        x     <- newTName "x"   -- lambda bound variable
+        a     <- newTName "a"   -- local array name
+        TH.lamE [TH.bangP (varP x)] (go l (aenv `ApushQ` varE a) (TH.bindS (varP a) [| useRemoteAsync $(TH.varE (unTName x)) |] : stmts))
+      --
+      go (Abody b) aenv stmts = do
+        r     <- newTName "r"
+        aenvq <- newTName "aenv"
+        --
+        [| $using
+           . phase "execute"
+           $ $(k $ TH.doE ( reverse stmts ++      -- useRemoteAsync
+                           [ letS [valD (varP aenvq) (normalB (mkEnv aenv)) []]
+                           , bindS (varP r) (embedOpenAcc defaultTarget b aenv (varE aenvq))
+                           , TH.noBindS [| get $(TH.unTypeQ (varE r)) |]
+                           ]))
+         |]
+
+      mkEnv :: AvalQ PTX aenv -> TExpQ (Val aenv)
+      mkEnv AemptyQ        = [|| Empty ||]
+      mkEnv (ApushQ env x) = [|| $$(mkEnv env) `Push` $$x ||]
+  --
+  go afun AemptyQ []
 
 
 -- How the Accelerate program should be evaluated.
@@ -522,9 +535,11 @@ registerPinnedAllocatorWith target =
 -- Debugging
 -- =========
 
+{-# INLINEABLE dumpStats #-}
 dumpStats :: MonadIO m => a -> m a
 dumpStats x = dumpSimplStats >> return x
 
+{-# INLINEABLE phase #-}
 phase :: MonadIO m => String -> m a -> m a
 phase n go = timed dump_phases (\wall cpu -> printf "phase %s: %s" n (elapsed wall cpu)) go
 
