@@ -145,6 +145,7 @@ Library
         -O2
         -Wall
         -fwarn-tabs
+        -feager-blackholing
 
   ghc-prof-options:
         -caf-all
