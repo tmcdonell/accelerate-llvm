@@ -6,7 +6,6 @@
 {-# LANGUAGE GADTs                 #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
-{-# LANGUAGE TemplateHaskell       #-}
 {-# LANGUAGE TypeFamilies          #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 #if __GLASGOW_HASKELL__ <= 708
@@ -33,13 +32,11 @@ module Data.Array.Accelerate.LLVM.PTX.Execute.Marshal (
 
 -- accelerate
 import Data.Array.Accelerate.LLVM.State
-import Data.Array.Accelerate.LLVM.CodeGen.Environment           ( Gamma, Idx'(..) )
 import qualified Data.Array.Accelerate.LLVM.Execute.Marshal     as M
 
 import Data.Array.Accelerate.LLVM.PTX.Target
 import Data.Array.Accelerate.LLVM.PTX.Array.Data
 import Data.Array.Accelerate.LLVM.PTX.Execute.Async
-import Data.Array.Accelerate.LLVM.PTX.Execute.Environment       ( Val, prj )
 import qualified Data.Array.Accelerate.LLVM.PTX.Array.Prim      as Prim
 
 -- cuda
@@ -53,7 +50,6 @@ import Data.Typeable
 import Foreign.Ptr
 import Foreign.Storable                                         ( Storable )
 import qualified Data.DList                                     as DL
-import qualified Data.IntMap                                    as IM
 
 
 -- Instances for handling concrete types in the PTX backend
@@ -74,23 +70,21 @@ instance Monad m => M.Marshalable PTX m Int32 where
   {-# INLINE marshal' #-}
   marshal' _ x = return $ DL.singleton (CUDA.VArg x)
 
-instance {-# OVERLAPS #-} M.Marshalable PTX (Par PTX) (Gamma aenv, Val aenv) where
-  {-# INLINE marshal' #-}
-  marshal' proxy (gamma, aenv)
-    = fmap DL.concat
-    $ mapM (\(_, Idx' idx) -> liftPar . M.marshal' proxy =<< get (prj idx aenv)) (IM.elems gamma)
-
-instance (M.Marshalable PTX (Par PTX) a) => M.Marshalable PTX (Par PTX) (Future a) where
-  {-# INLINE marshal' #-}
-  marshal' proxy future = M.marshal' proxy =<< get future
-
 instance ArrayElt e => M.Marshalable PTX (Par PTX) (ArrayData e) where
   {-# INLINE marshal' #-}
-  marshal' proxy adata = liftPar (M.marshal' proxy adata)
+  marshal' arch adata = liftPar (M.marshal' arch adata)
 
 instance ArrayElt e => M.Marshalable PTX (LLVM PTX) (ArrayData e) where
   {-# INLINE marshal' #-}
-  marshal' _ adata = go arrayElt adata
+  marshal' arch adata = M.marshal1' arch (Proxy::Proxy ArrayElt) adata
+
+instance M.Marshalable1 PTX (Par PTX) ArrayElt GArrayData where
+  {-# INLINE marshal1' #-}
+  marshal1' arch aer adata = liftPar (M.marshal1' arch aer adata)
+
+instance M.Marshalable1 PTX (LLVM PTX) ArrayElt GArrayData where
+  {-# INLINE marshal1' #-}
+  marshal1' _ _ adata = go arrayElt adata
     where
       {-# INLINE wrap #-}
       wrap :: forall e' a. (ArrayElt e', ArrayPtrs e' ~ Ptr a, Typeable e', Typeable a, Storable a)

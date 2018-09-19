@@ -1,3 +1,4 @@
+{-# LANGUAGE ConstraintKinds       #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -28,9 +29,12 @@ import Data.Array.Accelerate.Array.Sugar
 import Data.Array.Accelerate.Error
 import Data.Array.Accelerate.Type
 
+import Data.Array.Accelerate.LLVM.Execute.Environment
+
 -- libraries
-import Data.Proxy                                               ( Proxy )
+import Data.Constraint
 import Data.DList                                               ( DList )
+import Data.Proxy                                               ( Proxy(..) )
 import qualified Data.DList                                     as DL
 
 
@@ -55,12 +59,15 @@ type family ArgR arch
 -- These are just the basic definitions that don't require backend specific
 -- knowledge. To complete the definition, a backend must provide instances for:
 --
---   * Int                      -- for shapes
---   * ArrayData e              -- for array data
---   * (Gamma aenv, Aval aenv)  -- for free array variables
+-- > instance Marshalable  arch m Int
+-- > instance Marshalable1 arch m GArrayData
 --
 class Monad m => Marshalable arch m a where
   marshal' :: Proxy arch -> a -> m (DList (ArgR arch))
+
+class Monad m => Marshalable1 arch m (c :: * -> Constraint) (k :: * -> *) where
+  marshal1' :: c e => Proxy arch -> Proxy c -> k e -> m (DList (ArgR arch))
+
 
 instance Monad m => Marshalable arch m () where
   {-# INLINE marshal' #-}
@@ -109,25 +116,21 @@ instance Marshalable arch m a => Marshalable arch m [a] where
   {-# INLINE marshal' #-}
   marshal' proxy = fmap DL.concat . mapM (marshal' proxy)
 
--- instance Monad m => Marshalable arch m (DList (ArgR arch)) where
---   marshal' _ = return
-
--- instance (Async arch, Marshalable arch (Par arch) a) => Marshalable arch (Par arch) (FutureR arch a) where
---   marshal' proxy future = marshal' proxy =<< get future
-
-instance (Shape sh, Marshalable arch m Int, Marshalable arch m (ArrayData (EltRepr e)))
+instance (Shape sh, Elt e, Marshalable arch m Int, Marshalable1 arch m ArrayElt GArrayData)
     => Marshalable arch m (Array sh e) where
   {-# INLINE marshal' #-}
   marshal' proxy (Array sh adata) =
-    DL.concat `fmap` sequence [marshal' proxy adata, go proxy (eltType @sh) sh]
+    DL.concat `fmap` sequence [ marshal1' proxy (Proxy::Proxy ArrayElt) adata, go proxy (eltType @sh) sh]
     where
-      go :: Proxy arch -> TupleType a -> a -> m (DList (ArgR arch))
+      go :: Proxy arch -> TupleType t -> t -> m (DList (ArgR arch))
       go _ TypeRunit         ()       = return DL.empty
       go p (TypeRpair ta tb) (sa, sb) = DL.concat `fmap` sequence [go p ta sa, go p tb sb]
       go p (TypeRscalar t)   i
         | SingleScalarType (NumSingleType (IntegralNumType TypeInt{})) <- t = marshal' p i
         | otherwise                                                         = $internalError "marshal" "expected Int argument"
 
+-- XXX: We really want this to be deducible from the below two Z and (:.)
+--      instances
 instance {-# INCOHERENT #-} (Shape sh, Monad m, Marshalable arch m Int)
     => Marshalable arch m sh where
   {-# INLINE marshal' #-}
@@ -141,15 +144,33 @@ instance {-# INCOHERENT #-} (Shape sh, Monad m, Marshalable arch m Int)
         | otherwise                                                         = $internalError "marshal" "expected Int argument"
 
 -- instance Monad m => Marshalable arch m Z where
+--   {-# INLINE marshal' #-}
 --   marshal' _ Z = return DL.empty
 
--- instance (Shape sh, Marshalable arch m sh, Marshalable arch m Int)
---     => Marshalable arch m (sh :. Int) where
+-- instance (Marshalable arch m sh, Marshalable arch m Int) => Marshalable arch m (sh :. Int) where
+--   {-# INLINE marshal' #-}
 --   marshal' proxy (sh :. sz) =
 --     DL.concat `fmap` sequence [marshal' proxy sh, marshal' proxy sz]
 
--- instance Marshalable arch (Gamma aenv, ValR arch aenv) where
---   marshal' (gamma, aenv)
---     = fmap DL.concat
---     $ mapM (\(_, Idx' idx) -> marshal' =<< get (prj idx aenv)) (IM.elems gamma)
+-- XXX: -XQuantifiedConstraints would allow us to simplify this module
+--
+-- instance (forall sh e. Marshalable arch m (Array sh e)) => Marshalable arch m (Gamma aenv) where
+--   {-# INLINE marshal' #-}
+--   marshal' proxy (Gamma aeR arrs) = go aeR arrs
+--     where
+--       {-# INLINE go #-}
+--       go :: ArraysR a -> a -> m (DList (ArgR arch))
+--       go ArraysRunit             ()        = return DL.empty
+--       go (ArraysRpair aeR1 aeR2) (a1, a2)  = DL.concat `fmap` sequence [go aeR1 a1, go aeR2 a2]
+--       go ArraysRarray            arr       = marshal' proxy arr
+
+instance (Marshalable arch m Int, Marshalable1 arch m ArrayElt GArrayData)
+    => Marshalable arch m (Gamma aenv) where
+  {-# INLINE marshal' #-}
+  marshal' proxy (Gamma aeR arrs) = go aeR arrs
+    where
+      go :: ArraysR a -> a -> m (DList (ArgR arch))
+      go ArraysRunit             ()        = return DL.empty
+      go (ArraysRpair aeR1 aeR2) (a1, a2)  = DL.concat `fmap` sequence [go aeR1 a1, go aeR2 a2]
+      go ArraysRarray            arr       = marshal' proxy arr
 

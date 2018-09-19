@@ -1,3 +1,4 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE CPP                 #-}
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE GADTs               #-}
@@ -32,9 +33,7 @@ module Data.Array.Accelerate.LLVM.Embed (
 
 ) where
 
-import LLVM.AST.Type.Name
-
-import Data.Array.Accelerate.AST                                    ( PrimFun(..), liftIdx, liftArrays, liftConst )
+import Data.Array.Accelerate.AST                                    ( PrimFun(..), liftArrays, liftConst )
 import Data.Array.Accelerate.Array.Representation                   ( SliceIndex(..) )
 import Data.Array.Accelerate.Array.Sugar                            hiding ( toIndex, fromIndex, intersect, union, shape, reshape )
 import Data.Array.Accelerate.Error
@@ -45,25 +44,22 @@ import qualified Data.Array.Accelerate.Array.Sugar                  as Sugar
 
 import Data.Array.Accelerate.LLVM.AST
 import Data.Array.Accelerate.LLVM.Array.Data
-import Data.Array.Accelerate.LLVM.CodeGen.Environment               ( Gamma, Idx'(..) )
+import Data.Array.Accelerate.LLVM.CodeGen.Environment               as CodeGen ( Gamma, Idx'(..) )
 import Data.Array.Accelerate.LLVM.Compile
 import Data.Array.Accelerate.LLVM.Embed.Environment
 import Data.Array.Accelerate.LLVM.Embed.Extra
 import Data.Array.Accelerate.LLVM.Execute
 import Data.Array.Accelerate.LLVM.Execute.Async
-import Data.Array.Accelerate.LLVM.Execute.Environment
+import Data.Array.Accelerate.LLVM.Execute.Environment               as Exec
 import Data.Array.Accelerate.LLVM.Extra
 import Data.Array.Accelerate.LLVM.Link
 
 import Data.Bits
-import Data.ByteString.Short                                        ( ShortByteString )
 import Data.Char
+import Control.Monad                                                ( foldM )
 import Data.Either
 import Data.Typeable
-import GHC.Ptr                                                      ( Ptr(..) )
 import Language.Haskell.TH                                          ( Q )
-import System.IO.Unsafe
-import qualified Data.ByteString.Short.Internal                     as BS
 import qualified Language.Haskell.TH                                as TH
 import qualified Language.Haskell.TH.Syntax                         as TH
 
@@ -96,49 +92,18 @@ class Embed arch where
 -- | Embed a compiled array function into a TemplateHaskell expression ready for
 -- direct execution.
 --
-{-# INLINE embedOpenAcc #-}
+{-# INLINE embedOpenAcc #-}   -- GHC bug? Specialisations should be possible with INLINEABLE, but we require INLINE
 embedOpenAcc
     :: forall arch aenv arrs. (Embed arch, Execute arch, Async arch, Typeable arch, Typeable aenv, Typeable arrs, Typeable (FutureR arch))
     => arch                                       -- ^ target architecture this code was compiled for
     -> CompiledOpenAcc arch aenv arrs             -- ^ compiled syntax tree
     -> AvalQ arch aenv                            -- ^ environment of bindings
-    -> TExpQ (ValR arch aenv)                     -- ^ the environment
     -> TExpQ (Par arch (FutureR arch arrs))
-embedOpenAcc arch = liftA
+embedOpenAcc arch acc aenv = liftA acc
   where
-    liftA :: (Typeable aenv', Typeable arrs')
-          => CompiledOpenAcc arch aenv' arrs'
-          -> AvalQ arch aenv'
-          -> TExpQ (ValR arch aenv')
-          -> TExpQ (Par arch (FutureR arch arrs'))
-    liftA (PlainAcc pacc)          = withSigE $$ embedPreOpenAccCommand  arch pacc
-    liftA (BuildAcc aenv obj pacc) = withSigE $$ embedPreOpenAccSkeleton arch (liftGamma aenv) (embedForTarget arch obj) pacc
-
-    liftGamma :: Gamma aenv' -> TExpQ (Gamma aenv')
-#if MIN_VERSION_containers(0,5,8)
-    liftGamma IM.Nil           = [|| IM.Nil ||]
-    liftGamma (IM.Bin p m l r) = [|| IM.Bin p m $$(liftGamma l) $$(liftGamma r) ||]
-    liftGamma (IM.Tip k v)     = [|| IM.Tip k $$(liftV v) ||]
-#else
-    -- O(n) at runtime to reconstruct the set
-    liftGamma aenv             = [|| IM.fromAscList $$(liftIM (IM.toAscList aenv)) ||]
-      where
-        liftIM :: [(Int, (Label, Idx' aenv'))] -> TExpQ [(Int, (Label, Idx' aenv'))]
-        liftIM im =
-          TH.TExp . TH.ListE <$> mapM (\(k,v) -> TH.unTypeQ [|| (k, $$(liftV v)) ||]) im
-#endif
-    liftV :: (Label, Idx' aenv') -> TExpQ (Label, Idx' aenv')
-    liftV (Label n, Idx' ix) = [|| (Label $$(liftSBS n), Idx' $$(liftIdx ix)) ||]
-
-    -- O(n) at runtime to copy from the Addr# to the ByteArray#. We should
-    -- be able to do this without copying, but I don't think the definition of
-    -- ByteArray# is exported (or it is deeply magical).
-    liftSBS :: ShortByteString -> TExpQ ShortByteString
-    liftSBS bs =
-      let bytes = BS.unpack bs
-          len   = BS.length bs
-      in
-      [|| unsafePerformIO $ BS.createFromPtr $$( TH.unsafeTExpCoerce [| Ptr $(TH.litE (TH.StringPrimL bytes)) |]) len ||]
+    liftA :: CompiledOpenAcc arch aenv arrs -> TExpQ (Par arch (FutureR arch arrs))
+    liftA (PlainAcc pacc)           = withSigE $ embedPreOpenAccCommand  arch                                 pacc aenv
+    liftA (BuildAcc gamma obj pacc) = withSigE $ embedPreOpenAccSkeleton arch gamma (embedForTarget arch obj) pacc aenv
 
 
 {-# INLINEABLE embedPreOpenAccCommand #-}
@@ -147,9 +112,8 @@ embedPreOpenAccCommand
     => arch
     -> PreOpenAccCommand CompiledOpenAcc arch aenv arrs
     -> AvalQ arch aenv
-    -> TExpQ (ValR arch aenv)
     -> TExpQ (Par arch (FutureR arch arrs))
-embedPreOpenAccCommand arch pacc aenv aenvq =
+embedPreOpenAccCommand arch pacc aenv =
   case pacc of
     Alet bnd body       -> alet bnd body
     Avar ix             -> [|| return $$(aprjQ ix aenv) ||]
@@ -167,22 +131,20 @@ embedPreOpenAccCommand arch pacc aenv aenvq =
 
   where
     travE :: PreExp (CompiledOpenAcc arch) aenv t -> Q (EventuallyR arch t)
-    travE exp = embedPreExp arch exp aenv aenvq
+    travE exp = embedPreExp arch exp aenv
 
     travA :: Arrays a => CompiledOpenAcc arch aenv a -> TExpQ (Par arch (FutureR arch a))
-    travA acc = embedOpenAcc arch acc aenv aenvq
+    travA acc = embedOpenAcc arch acc aenv
 
     alet :: (Arrays a, Arrays b)
          => CompiledOpenAcc arch aenv a
          -> CompiledOpenAcc arch (aenv, a) b
          -> TExpQ (Par arch (FutureR arch b))
     alet bnd body = do
-     x      <- newTName "x"
-     aenv'  <- newTName "_aenv"
+     x  <- newTName "x"
      --
      doE [ bindS (varP x) [|| spawn $ $$( travA bnd ) ||]
-         , letS [valD (varP aenv') (normalB [|| $$aenvq `Push` $$(varE x) ||]) []]
-         , noBindS [|| spawn $ $$( embedOpenAcc arch body (aenv `ApushQ` varE x) (varE aenv') ) ||]
+         , noBindS [|| spawn $ $$( embedOpenAcc arch body (aenv `ApushQ` varE x) ) ||]
          ]
 
     unit :: Elt t => PreExp (CompiledOpenAcc arch) aenv t -> TExpQ (Par arch (FutureR arch (Scalar t)))
@@ -322,13 +284,12 @@ embedPreOpenAccCommand arch pacc aenv aenvq =
 embedPreOpenAccSkeleton
     :: forall arch aenv arrs. (Embed arch, Execute arch, Async arch, Typeable arch, Typeable aenv, Typeable (FutureR arch))
     => arch
-    -> TExpQ (Gamma aenv)
+    -> CodeGen.Gamma aenv
     -> TExpQ (ExecutableR arch)
     -> PreOpenAccSkeleton CompiledOpenAcc arch aenv arrs
     -> AvalQ arch aenv
-    -> TExpQ (ValR arch aenv)
     -> TExpQ (Par arch (FutureR arch arrs))
-embedPreOpenAccSkeleton arch gamma kernel pacc aenv aenvq =
+embedPreOpenAccSkeleton arch gamma kernel pacc aenv =
   case pacc of
     -- Producers
     Map sh              -> exec1 'map         (travE sh)
@@ -353,43 +314,90 @@ embedPreOpenAccSkeleton arch gamma kernel pacc aenv aenvq =
 
   where
     travE :: PreExp (CompiledOpenAcc arch) aenv t -> Q (EventuallyR arch t)
-    travE exp = embedPreExp arch exp aenv aenvq
+    travE exp = embedPreExp arch exp aenv
 
-    exec1 :: TH.Name    -- ExecutableR arch -> Gamma aenv -> ValR arch aenv -> a -> Par arch (FutureR arch b)
+    exec1 :: TH.Name    -- ExecutableR arch -> Gamma aenv -> a -> Par arch (FutureR arch b)
           -> Q (EventuallyR arch a)
           -> TExpQ (Par arch (FutureR arch b))
     exec1 (return . TH.TExp . TH.VarE -> f) x = do
-      x' <- x
+      x'      <- x
+      u       <- newTName "u"
+      v       <- newTName "v"
+      (ss, g) <- liftGamma gamma
       case x' of
-        Now r   -> [|| spawn $ $$f $$kernel $$gamma $$aenvq $$r ||]
-        Later r -> [|| do v <- $$r
-                          spawn $ $$f $$kernel $$gamma $$aenvq =<< get v ||]
+        Now r   -> [|| spawn $ $$( doE $ ss ++
+                                       [ noBindS [|| $$f $$kernel $$g $$r ||] ]) ||]
+        Later r -> doE [ bindS (varP u) r
+                       , noBindS [|| $$spawn_ $ $$( doE $ ss ++
+                                                        [ bindS (varP v) [|| $$get_ $$(varE u) ||]
+                                                        , noBindS [|| $$f $$kernel $$g $$(varE v) ||]
+                                                        ])
+                                  ||]
+                       ]
 
-    exec2 :: TH.Name    -- ExecutableR arch -> Gamma aenv -> ValR arch aenv -> a -> b -> Par arch (FutureR arch c)
+    exec2 :: TH.Name    -- ExecutableR arch -> Gamma aenv -> a -> b -> Par arch (FutureR arch c)
           -> Q (EventuallyR arch a)
           -> Q (EventuallyR arch b)
           -> TExpQ (Par arch (FutureR arch c))
     exec2 (return . TH.TExp . TH.VarE -> f) x y = do
-      x' <- x
-      y' <- y
+      x'      <- x
+      y'      <- y
+      u1      <- newTName "u"
+      v1      <- newTName "v"
+      u2      <- newTName "u"
+      v2      <- newTName "v"
+      (ss, g) <- liftGamma gamma
       let
-          go (Now u) (Now v)      = [|| spawn $ $$f $$kernel $$gamma $$aenvq $$u $$v ||]
-          go (Now u) (Later v)    = [|| do v' <- $$v
-                                           spawn $ do v'' <- get v'
-                                                      spawn $ $$f $$kernel $$gamma $$aenvq $$u v''
-                                     ||]
-          go (Later u) (Now v)    = [|| do u' <- $$u
-                                           spawn $ do u'' <- get u'
-                                                      spawn $ $$f $$kernel $$gamma $$aenvq u'' $$v
-                                     ||]
-          go (Later u) (Later v)  = [|| do u' <- $$u
-                                           v' <- $$v
-                                           spawn $ do u'' <- get u'
-                                                      v'' <- get v'
-                                                      spawn $ $$f $$kernel $$gamma $$aenvq u'' v''
-                                     ||]
+          go (Now a) (Now b)      = [|| spawn $ $$( doE $ ss ++
+                                                        [ noBindS [|| $$f $$kernel $$g $$a $$b ||] ]) ||]
+
+          go (Now a) (Later b)    = doE [ bindS (varP u2) b
+                                        , noBindS [|| $$spawn_ $ $$( doE $ ss ++
+                                                                         [ bindS (varP v2) [|| $$get_ $$(varE u2) ||]
+                                                                         , noBindS [|| $$f $$kernel $$g $$a $$(varE v2) ||]
+                                                                         ]) ||]
+                                        ]
+
+          go (Later a) (Now b)    = doE [ bindS (varP u1) a
+                                        , noBindS [|| $$spawn_ $ $$( doE $ ss ++
+                                                                         [ bindS (varP v1) [|| $$get_ $$(varE u1) ||]
+                                                                         , noBindS [|| $$f $$kernel $$g $$(varE v1) $$b ||]
+                                                                         ]) ||]
+                                        ]
+          go (Later a) (Later b)  = doE [ bindS (varP u1) a
+                                        , bindS (varP u2) b
+                                        , noBindS [|| $$spawn_ $ $$( doE $ ss ++
+                                                                         [ bindS (varP v1) [|| $$get_ $$(varE u1) ||]
+                                                                         , bindS (varP v2) [|| $$get_ $$(varE u2) ||]
+                                                                         , noBindS [|| $$f $$kernel $$g $$(varE v1) $$(varE v2) ||]
+                                                                         ]) ||]
+                                        ]
       --
       go x' y'
+
+    liftGamma :: CodeGen.Gamma aenv -> Q ([TH.StmtQ], TExpQ (Exec.Gamma aenv))
+    liftGamma im = do
+      let
+          go :: ([TH.StmtQ], TH.ExpQ, TH.ExpQ) -> Idx' aenv -> Q ([TH.StmtQ], TH.ExpQ, TH.ExpQ)
+          go (ss, aeR, as) (Idx' idx) = do
+            a <- newTName "a"
+            let
+                s     = bindS (varP a) [|| $$get_ $$(aprjQ idx aenv) ||]
+                aeR'  = [| ArraysRpair $aeR ArraysRarray |]
+                as'   = [| ($as, $(TH.unTypeQ (varE a))) |]
+            --
+            return ( s:ss, aeR', as')
+      --
+      (ss, aeR, as) <- foldM go ([], [| ArraysRunit |], [| () |]) [ ix | (_, ix) <- IM.elems im ]
+      return (ss, TH.unsafeTExpCoerce [| Gamma $aeR $as |])
+
+    -- XXX: Hacks to get Typed TemplateHaskell to type check
+    --
+    get_ :: TExpQ (FutureR arch a -> Par arch a)
+    get_ = varE (TName 'get)
+
+    spawn_ :: TExpQ (Par arch (FutureR arch a) -> Par arch (FutureR arch a))
+    spawn_ = varE (TName 'spawn)
 
 
 -- Scalar expressions
@@ -428,7 +436,6 @@ embedPreExp
     => arch
     -> PreExp (CompiledOpenAcc arch) aenv exp
     -> AvalQ arch aenv
-    -> TExpQ (ValR arch aenv)
     -> Q (EventuallyR arch exp)
 embedPreExp arch exp = embedPreOpenExp arch exp EmptyQ
 
@@ -439,9 +446,8 @@ embedPreOpenExp
     -> CompiledOpenExp arch env aenv exp
     -> ValQ arch env
     -> AvalQ arch aenv
-    -> TExpQ (ValR arch aenv)
     -> Q (EventuallyR arch exp)
-embedPreOpenExp arch exp env aenv aenvq =
+embedPreOpenExp arch exp env aenv =
   case exp of
     Let bnd body            -> elet bnd body
     Var ix                  -> now (prjQ ix env)
@@ -479,10 +485,10 @@ embedPreOpenExp arch exp env aenv aenvq =
     later = return . Later
 
     travA :: Arrays a => CompiledOpenAcc arch aenv a -> TExpQ (Par arch (FutureR arch a))
-    travA a = embedOpenAcc arch a aenv aenvq
+    travA a = embedOpenAcc arch a aenv
 
     travE :: Elt t => CompiledOpenExp arch env aenv t -> Q (EventuallyR arch t)
-    travE e = embedPreOpenExp arch e env aenv aenvq
+    travE e = embedPreOpenExp arch e env aenv
 
     etuple :: Tuple (CompiledOpenExp arch env aenv) (TupleRepr t) -> Q (EventuallyR arch t)
     etuple tup = do
@@ -554,7 +560,7 @@ embedPreOpenExp arch exp env aenv aenvq =
          -> Q (EventuallyR arch b)
     elet bnd body =
       flip lift1 (travE bnd) $ \x ->
-      embedPreOpenExp arch body (env `PushQ` x) aenv aenvq
+      embedPreOpenExp arch body (env `PushQ` x) aenv
 
     eprj :: forall t e. IsTuple t => TupleIdx (TupleRepr t) e -> TExpQ t -> TExpQ e
     eprj tix t = do
@@ -648,44 +654,44 @@ embedPreOpenExp arch exp env aenv aenvq =
     intersect :: forall sh. Shape sh => TExpQ sh -> TExpQ sh -> TExpQ sh
     -- intersect sh1 sh2 = [|| Sugar.intersect $$sh1 $$sh2 ||]
     intersect sh1 sh2 = do
-      let
-          go :: TupleType t -> Q (TH.PatQ, [TH.Name])
-          go TypeRunit          = return (TH.conP 'Z [], [])
-          go (TypeRpair sh sz)  = do
-            (psh, sh')  <- go sh
-            (psz, sz')  <- go sz
-            return (TH.conP '(:.) [psh, psz], sh'++sz')
-          go TypeRscalar{}
-            = do i' <- TH.newName "sh"
-                 return (TH.varP i', [i'])
-      --
-      (pat1, sh1')  <- go (eltType @sh)
-      (pat2, sh2')  <- go (eltType @sh)
+      (pat1, sh1')  <- shape_pattern @sh
+      (pat2, sh2')  <- shape_pattern @sh
       TH.unsafeTExpCoerce
         $ TH.caseE (TH.unTypeQ sh1) [ TH.match pat1 (TH.normalB (
           TH.caseE (TH.unTypeQ sh2) [ TH.match pat2 (TH.normalB ( P.foldl (\a b -> [| $a :. $b |]) (TH.conE 'Z)
                                                                 $ P.zipWith (\a b -> [| min $(TH.varE a) $(TH.varE b) |]) sh1' sh2')) [] ])) [] ]
 
-    union :: Shape sh => TExpQ sh -> TExpQ sh -> TExpQ sh
-    union sh1 sh2 = [|| Sugar.union $$sh1 $$sh2 ||]
+    union :: forall sh. Shape sh => TExpQ sh -> TExpQ sh -> TExpQ sh
+    -- union sh1 sh2 = [|| Sugar.union $$sh1 $$sh2 ||]
+    union sh1 sh2 = do
+      (pat1, sh1')  <- shape_pattern @sh
+      (pat2, sh2')  <- shape_pattern @sh
+      TH.unsafeTExpCoerce
+        $ TH.caseE (TH.unTypeQ sh1) [ TH.match pat1 (TH.normalB (
+          TH.caseE (TH.unTypeQ sh2) [ TH.match pat2 (TH.normalB ( P.foldl (\a b -> [| $a :. $b |]) (TH.conE 'Z)
+                                                                $ P.zipWith (\a b -> [| max $(TH.varE a) $(TH.varE b) |]) sh1' sh2')) [] ])) [] ]
 
     shapeSize :: forall sh. Shape sh => TExpQ sh -> TExpQ Int
     -- shapeSize sh = [|| Sugar.size $$sh ||]
     shapeSize sh = do
-      let
-          go :: TupleType t -> Q (TH.PatQ, [TH.Name])
-          go TypeRunit          = return (TH.conP 'Z [], [])
-          go (TypeRpair th tz)  = do
-            (psh, sh')  <- go th
-            (psz, sz')  <- go tz
-            return (TH.conP '(:.) [psh, psz], sh'++sz')
-          go TypeRscalar{}
-            = do i' <- TH.newName "sh"
-                 return (TH.varP i', [i'])
-      --
-      (pat, sh')  <- go (eltType @sh)
-      TH.unsafeTExpCoerce
-        $ TH.caseE (TH.unTypeQ sh) [ TH.match pat (TH.normalB (P.foldl (\a b -> [| $a * $(TH.varE b)|]) [| 1 |] sh')) []]
+      (pat, sh')  <- shape_pattern @sh
+      case sh' of
+        [] -> [|| 1 ||]
+        _  -> TH.unsafeTExpCoerce
+            $ TH.caseE (TH.unTypeQ sh) [ TH.match pat (TH.normalB (P.foldl1 (\a b -> [| $a * $b|]) (P.map TH.varE sh'))) []]
+
+    shape_pattern :: forall sh. Shape sh => Q (TH.PatQ, [TH.Name])
+    shape_pattern = go (eltType @sh)
+      where
+        go :: TupleType t -> Q (TH.PatQ, [TH.Name])
+        go TypeRunit          = return (TH.conP 'Z [], [])
+        go (TypeRpair sh sz)  = do
+          (psh, sh')  <- go sh
+          (psz, sz')  <- go sz
+          return (TH.conP '(:.) [psh, psz], sh'++sz')
+        go TypeRscalar{}
+          = do i' <- TH.newName "sh"
+               return (TH.varP i', [i'])
 
     shape :: Shape sh => TExpQ (Par arch (FutureR arch (Array sh e))) -> Q (EventuallyR arch sh)
     shape (later -> arr) =
@@ -722,7 +728,7 @@ embedPreOpenExp arch exp env aenv aenvq =
       lift2 (\arr' ix' -> later [|| indexRemoteAsync $$arr' $$ix' ||]) arr ix
 
     foreignE :: CompiledFun arch () (a -> b) -> Q (EventuallyR arch a) -> Q (EventuallyR arch b)
-    foreignE (Lam (Body f)) = lift1 (\x -> embedPreOpenExp arch f (EmptyQ `PushQ` x) AemptyQ [|| Empty ||])
+    foreignE (Lam (Body f)) = lift1 (\x -> embedPreOpenExp arch f (EmptyQ `PushQ` x) AemptyQ)
     foreignE _              = error "will you still love me, when I'm no longer young and beautiful?"
 
     lift1 :: (TExpQ a -> Q (EventuallyR arch b))

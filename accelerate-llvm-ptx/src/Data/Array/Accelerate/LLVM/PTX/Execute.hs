@@ -132,10 +132,9 @@ simpleOp
     :: (Shape sh, Elt e)
     => ExecutableR PTX
     -> Gamma aenv
-    -> Val aenv
     -> sh
     -> Par PTX (Future (Array sh e))
-simpleOp exe gamma aenv sh = withExecutable exe $ \ptxExecutable -> do
+simpleOp exe gamma sh = withExecutable exe $ \ptxExecutable -> do
   let kernel = case functionTable ptxExecutable of
                  k:_ -> k
                  _   -> $internalError "simpleOp" "no kernels found"
@@ -143,7 +142,7 @@ simpleOp exe gamma aenv sh = withExecutable exe $ \ptxExecutable -> do
   future <- new
   result <- allocateRemote sh
   --
-  executeOp kernel gamma aenv sh result
+  executeOp kernel gamma sh result
   put future result
   return future
 
@@ -153,14 +152,13 @@ simpleNamed
     => ShortByteString
     -> ExecutableR PTX
     -> Gamma aenv
-    -> Val aenv
     -> sh
     -> Par PTX (Future (Array sh e))
-simpleNamed fun exe gamma aenv sh = withExecutable exe $ \ptxExecutable -> do
+simpleNamed fun exe gamma sh = withExecutable exe $ \ptxExecutable -> do
   future <- new
   result <- allocateRemote sh
   --
-  executeOp (ptxExecutable !# fun) gamma aenv sh result
+  executeOp (ptxExecutable !# fun) gamma sh result
   put future result
   return future
 
@@ -184,52 +182,48 @@ fold1Op
     :: (Shape sh, Elt e)
     => ExecutableR PTX
     -> Gamma aenv
-    -> Val aenv
     -> (sh :. Int)
     -> Par PTX (Future (Array sh e))
-fold1Op exe gamma aenv sh@(sx :. sz)
+fold1Op exe gamma sh@(sx :. sz)
   = $boundsCheck "fold1" "empty array" (sz > 0)
   $ case size sh of
       0 -> newFull =<< allocateRemote sx  -- empty, but possibly with one or more non-zero dimensions
-      _ -> foldCore exe gamma aenv sh
+      _ -> foldCore exe gamma sh
 
 {-# INLINE foldOp #-}
 foldOp
     :: (Shape sh, Elt e)
     => ExecutableR PTX
     -> Gamma aenv
-    -> Val aenv
     -> (sh :. Int)
     -> Par PTX (Future (Array sh e))
-foldOp exe gamma aenv sh@(sx :. _)
+foldOp exe gamma sh@(sx :. _)
   = case size sh of
-      0 -> simpleNamed "generate" exe gamma aenv sx
-      _ -> foldCore exe gamma aenv sh
+      0 -> simpleNamed "generate" exe gamma sx
+      _ -> foldCore exe gamma sh
 
 {-# INLINE foldCore #-}
 foldCore
     :: forall aenv sh e. (Shape sh, Elt e)
     => ExecutableR PTX
     -> Gamma aenv
-    -> Val aenv
     -> (sh :. Int)
     -> Par PTX (Future (Array sh e))
-foldCore exe gamma aenv sh
+foldCore exe gamma sh
   | Just Refl <- matchShapeType @sh @Z
-  = foldAllOp exe gamma aenv sh
+  = foldAllOp exe gamma sh
   --
   | otherwise
-  = foldDimOp exe gamma aenv sh
+  = foldDimOp exe gamma sh
 
 {-# INLINE foldAllOp #-}
 foldAllOp
     :: forall aenv e. Elt e
     => ExecutableR PTX
     -> Gamma aenv
-    -> Val aenv
     -> DIM1
     -> Par PTX (Future (Scalar e))
-foldAllOp exe gamma aenv sh@(Z :. n) = withExecutable exe $ \ptxExecutable -> do
+foldAllOp exe gamma sh@(Z :. n) = withExecutable exe $ \ptxExecutable -> do
   future <- new
   let
       ks    = ptxExecutable !# "foldAllS"
@@ -240,7 +234,7 @@ foldAllOp exe gamma aenv sh@(Z :. n) = withExecutable exe $ \ptxExecutable -> do
     then do
       -- The array is small enough that we can compute it in a single step
       result <- allocateRemote Z
-      executeOp ks gamma aenv sh result
+      executeOp ks gamma sh result
       put future result
 
     else do
@@ -254,12 +248,12 @@ foldAllOp exe gamma aenv sh@(Z :. n) = withExecutable exe $ \ptxExecutable -> do
             | otherwise = do
                 let sh' = Z :. m `multipleOf` kernelThreadBlockSize km2
                 out <- allocateRemote sh'
-                executeOp km2 gamma aenv sh' (tmp, out)
+                executeOp km2 gamma sh' (tmp, out)
                 rec out
       --
       let sh' = Z :. n `multipleOf` kernelThreadBlockSize km1
       tmp <- allocateRemote sh'
-      executeOp km1 gamma aenv sh' tmp
+      executeOp km1 gamma sh' tmp
       rec tmp
   --
   return future
@@ -270,12 +264,11 @@ foldDimOp
     :: forall aenv sh e. (Shape sh, Elt e)
     => ExecutableR PTX
     -> Gamma aenv
-    -> Val aenv
     -> (sh :. Int)
     -> Par PTX (Future (Array sh e))
-foldDimOp exe gamma aenv (sh :. sz)
-  | sz > 0    = simpleNamed "fold"     exe gamma aenv sh
-  | otherwise = simpleNamed "generate" exe gamma aenv sh
+foldDimOp exe gamma (sh :. sz)
+  | sz > 0    = simpleNamed "fold"     exe gamma sh
+  | otherwise = simpleNamed "generate" exe gamma sh
 
 
 {-# INLINE foldSegOp #-}
@@ -283,11 +276,10 @@ foldSegOp
     :: (Shape sh, Elt e)
     => ExecutableR PTX
     -> Gamma aenv
-    -> Val aenv
     -> (sh :. Int)
     -> (Z  :. Int)
     -> Par PTX (Future (Array (sh :. Int) e))
-foldSegOp exe gamma aenv (sh :. sz) (Z :. ss) = withExecutable exe $ \ptxExecutable -> do
+foldSegOp exe gamma (sh :. sz) (Z :. ss) = withExecutable exe $ \ptxExecutable -> do
   let
       n       = ss - 1  -- segments array has been 'scanl (+) 0'`ed
       m       = size sh * n
@@ -301,7 +293,7 @@ foldSegOp exe gamma aenv (sh :. sz) (Z :. ss) = withExecutable exe $ \ptxExecuta
   --
   future  <- new
   result  <- allocateRemote (sh :. n)
-  executeOp foldseg gamma aenv (Z :. m) result
+  executeOp foldseg gamma (Z :. m) result
   put future result
   return future
 
@@ -311,53 +303,49 @@ scanOp
     :: (Shape sh, Elt e)
     => ExecutableR PTX
     -> Gamma aenv
-    -> Val aenv
     -> sh :. Int
     -> Par PTX (Future (Array (sh:.Int) e))
-scanOp exe gamma aenv (sz :. n) =
+scanOp exe gamma (sz :. n) =
   case n of
-    0 -> simpleNamed "generate" exe gamma aenv (sz :. 1)
-    _ -> scanCore exe gamma aenv sz n (n+1)
+    0 -> simpleNamed "generate" exe gamma (sz :. 1)
+    _ -> scanCore exe gamma sz n (n+1)
 
 {-# INLINE scan1Op #-}
 scan1Op
     :: (Shape sh, Elt e)
     => ExecutableR PTX
     -> Gamma aenv
-    -> Val aenv
     -> sh :. Int
     -> Par PTX (Future (Array (sh:.Int) e))
-scan1Op exe gamma aenv (sz :. n)
+scan1Op exe gamma (sz :. n)
   = $boundsCheck "scan1" "empty array" (n > 0)
-  $ scanCore exe gamma aenv sz n n
+  $ scanCore exe gamma sz n n
 
 {-# INLINE scanCore #-}
 scanCore
     :: forall aenv sh e. (Shape sh, Elt e)
     => ExecutableR PTX
     -> Gamma aenv
-    -> Val aenv
     -> sh
     -> Int                    -- input size
     -> Int                    -- output size
     -> Par PTX (Future (Array (sh:.Int) e))
-scanCore exe gamma aenv sz n m
+scanCore exe gamma sz n m
   | Just Refl <- matchShapeType @sh @Z
-  = scanAllOp exe gamma aenv n m
+  = scanAllOp exe gamma n m
   --
   | otherwise
-  = scanDimOp exe gamma aenv sz m
+  = scanDimOp exe gamma sz m
 
 {-# INLINE scanAllOp #-}
 scanAllOp
     :: forall aenv e. Elt e
     => ExecutableR PTX
     -> Gamma aenv
-    -> Val aenv
     -> Int                    -- input size
     -> Int                    -- output size
     -> Par PTX (Future (Vector e))
-scanAllOp exe gamma aenv n m = withExecutable exe $ \ptxExecutable -> do
+scanAllOp exe gamma n m = withExecutable exe $ \ptxExecutable -> do
   let
       k1  = ptxExecutable !# "scanP1"
       k2  = ptxExecutable !# "scanP2"
@@ -373,13 +361,13 @@ scanAllOp exe gamma aenv n m = withExecutable exe $ \ptxExecutable -> do
   -- which can be computed by a single thread block will require no
   -- additional work.
   tmp     <- allocateRemote (Z :. s) :: Par PTX (Vector e)
-  executeOp k1 gamma aenv (Z :. s) (tmp, result)
+  executeOp k1 gamma (Z :. s) (tmp, result)
 
   -- Step 2: Multi-block reductions need to compute the per-block prefix,
   -- then apply those values to the partial results.
   when (s > 1) $ do
-    executeOp k2 gamma aenv (Z :. s)   tmp
-    executeOp k3 gamma aenv (Z :. s-1) (tmp, result, c)
+    executeOp k2 gamma (Z :. s)   tmp
+    executeOp k3 gamma (Z :. s-1) (tmp, result, c)
 
   put future result
   return future
@@ -389,14 +377,13 @@ scanDimOp
     :: forall aenv sh e. (Shape sh, Elt e)
     => ExecutableR PTX
     -> Gamma aenv
-    -> Val aenv
     -> sh
     -> Int
     -> Par PTX (Future (Array (sh:.Int) e))
-scanDimOp exe gamma aenv sz m = withExecutable exe $ \ptxExecutable -> do
+scanDimOp exe gamma sz m = withExecutable exe $ \ptxExecutable -> do
   future  <- new
   result  <- allocateRemote (sz :. m)
-  executeOp (ptxExecutable !# "scan") gamma aenv (Z :. size sz) result
+  executeOp (ptxExecutable !# "scan") gamma (Z :. size sz) result
   put future result
   return future
 
@@ -406,45 +393,42 @@ scan'Op
     :: forall aenv sh e. (Shape sh, Elt e)
     => ExecutableR PTX
     -> Gamma aenv
-    -> Val aenv
     -> sh :. Int
     -> Par PTX (Future (Array (sh:.Int) e, Array sh e))
-scan'Op exe gamma aenv sh@(sz :. n) =
+scan'Op exe gamma sh@(sz :. n) =
   case n of
     0 -> do
       future  <- new
       result  <- allocateRemote (sz :. 0)
-      sums    <- simpleNamed "generate" exe gamma aenv sz
+      sums    <- simpleNamed "generate" exe gamma sz
       fork $ do sums' <- get sums
                 put future (result, sums')
       return future
     --
-    _ -> scan'Core exe gamma aenv sh
+    _ -> scan'Core exe gamma sh
 
 {-# INLINE scan'Core #-}
 scan'Core
     :: forall aenv sh e. (Shape sh, Elt e)
     => ExecutableR PTX
     -> Gamma aenv
-    -> Val aenv
     -> sh :. Int
     -> Par PTX (Future (Array (sh:.Int) e, Array sh e))
-scan'Core exe gamma aenv sh
+scan'Core exe gamma sh
   | Just Refl <- matchShapeType @sh @Z
-  = scan'AllOp exe gamma aenv sh
+  = scan'AllOp exe gamma sh
   --
   | otherwise
-  = scan'DimOp exe gamma aenv sh
+  = scan'DimOp exe gamma sh
 
 {-# INLINE scan'AllOp #-}
 scan'AllOp
     :: forall aenv e. Elt e
     => ExecutableR PTX
     -> Gamma aenv
-    -> Val aenv
     -> DIM1
     -> Par PTX (Future (Vector e, Scalar e))
-scan'AllOp exe gamma aenv (Z :. n) = withExecutable exe $ \ptxExecutable -> do
+scan'AllOp exe gamma (Z :. n) = withExecutable exe $ \ptxExecutable -> do
   let
       k1  = ptxExecutable !# "scanP1"
       k2  = ptxExecutable !# "scanP2"
@@ -459,7 +443,7 @@ scan'AllOp exe gamma aenv (Z :. n) = withExecutable exe $ \ptxExecutable -> do
 
   -- Step 1: independent thread-block-wide scans. Each block stores its partial
   -- sum to a temporary array.
-  executeOp k1 gamma aenv (Z :. s) (tmp, result)
+  executeOp k1 gamma (Z :. s) (tmp, result)
 
   -- If this was a small array that was processed by a single thread block then
   -- we are done, otherwise compute the per-block prefix and apply those values
@@ -471,8 +455,8 @@ scan'AllOp exe gamma aenv (Z :. n) = withExecutable exe $ \ptxExecutable -> do
 
     else do
       sums <- allocateRemote Z
-      executeOp k2 gamma aenv (Z :. s)   (tmp, sums)
-      executeOp k3 gamma aenv (Z :. s-1) (tmp, result, c)
+      executeOp k2 gamma (Z :. s)   (tmp, sums)
+      executeOp k3 gamma (Z :. s-1) (tmp, result, c)
       put future (result, sums)
   --
   return future
@@ -482,14 +466,13 @@ scan'DimOp
     :: forall aenv sh e. (Shape sh, Elt e)
     => ExecutableR PTX
     -> Gamma aenv
-    -> Val aenv
     -> sh :. Int
     -> Par PTX (Future (Array (sh:.Int) e, Array sh e))
-scan'DimOp exe gamma aenv sh@(sz :. _) = withExecutable exe $ \ptxExecutable -> do
+scan'DimOp exe gamma sh@(sz :. _) = withExecutable exe $ \ptxExecutable -> do
   future  <- new
   result  <- allocateRemote sh
   sums    <- allocateRemote sz
-  executeOp (ptxExecutable !# "scan") gamma aenv (Z :. size sz) (result, sums)
+  executeOp (ptxExecutable !# "scan") gamma (Z :. size sz) (result, sums)
   put future (result, sums)
   return future
 
@@ -500,11 +483,10 @@ permuteOp
     => Bool
     -> ExecutableR PTX
     -> Gamma aenv
-    -> Val aenv
     -> sh
     -> Array sh' e
     -> Par PTX (Future (Array sh' e))
-permuteOp inplace exe gamma aenv shIn dfs@(shape -> shOut) = withExecutable exe $ \ptxExecutable -> do
+permuteOp inplace exe gamma shIn dfs@(shape -> shOut) = withExecutable exe $ \ptxExecutable -> do
   let
       n       = size shIn
       m       = size shOut
@@ -519,7 +501,7 @@ permuteOp inplace exe gamma aenv shIn dfs@(shape -> shOut) = withExecutable exe 
   --
   case kernelName kernel of
     -- execute directly using atomic operations
-    "permute_rmw"   -> executeOp kernel gamma aenv (Z :. n) result
+    "permute_rmw"   -> executeOp kernel gamma (Z :. n) result
 
     -- a temporary array is required for spin-locks around the critical section
     "permute_mutex" -> do
@@ -528,7 +510,8 @@ permuteOp inplace exe gamma aenv shIn dfs@(shape -> shOut) = withExecutable exe 
       fork $ do fill <- memsetArrayAsync m 0 ad
                 put barrier . Array ((), m) =<< get fill
       --
-      executeOp kernel gamma aenv (Z :. n) (result, barrier)
+      barrier'    <- get barrier
+      executeOp kernel gamma (Z :. n) (result, barrier')
 
     _               -> $internalError "permute" "unexpected kernel image"
   --
@@ -542,11 +525,10 @@ stencil1Op
     => sh
     -> ExecutableR PTX
     -> Gamma aenv
-    -> Val aenv
     -> sh
     -> Par PTX (Future (Array sh e))
-stencil1Op halo exe gamma aenv sh =
-  stencilCore exe gamma aenv halo sh
+stencil1Op halo exe gamma sh =
+  stencilCore exe gamma halo sh
 
 -- Using the defaulting instances for stencil operations (for now).
 --
@@ -556,23 +538,21 @@ stencil2Op
     => sh
     -> ExecutableR PTX
     -> Gamma aenv
-    -> Val aenv
     -> sh
     -> sh
     -> Par PTX (Future (Array sh e))
-stencil2Op halo exe gamma aenv sh1 sh2 =
-  stencilCore exe gamma aenv halo (sh1 `intersect` sh2)
+stencil2Op halo exe gamma sh1 sh2 =
+  stencilCore exe gamma halo (sh1 `intersect` sh2)
 
 {-# INLINE stencilCore #-}
 stencilCore
     :: forall aenv sh e. (Shape sh, Elt e)
     => ExecutableR PTX
     -> Gamma aenv
-    -> Val aenv
     -> sh                       -- border dimensions (i.e. index of first interior element)
     -> sh                       -- output array size
     -> Par PTX (Future (Array sh e))
-stencilCore exe gamma aenv halo shOut =  withExecutable exe $ \ptxExecutable -> do
+stencilCore exe gamma halo shOut =  withExecutable exe $ \ptxExecutable -> do
   let
       inside  = ptxExecutable !# "stencil_inside"
       border  = ptxExecutable !# "stencil_border"
@@ -595,7 +575,7 @@ stencilCore exe gamma aenv halo shOut =  withExecutable exe $ \ptxExecutable -> 
   parent  <- asks ptxStream
 
   -- interior (no bounds checking)
-  executeOp inside gamma aenv shIn (shIn, result)
+  executeOp inside gamma shIn (shIn, result)
 
   -- halo regions (bounds checking)
   -- executed in separate streams so that they might overlap the main stencil
@@ -604,7 +584,7 @@ stencilCore exe gamma aenv halo shOut =  withExecutable exe $ \ptxExecutable -> 
     fork $ do
       -- launch in a separate stream
       let sh = trav (-) v u
-      executeOp border gamma aenv sh (u, sh, result)
+      executeOp border gamma sh (u, sh, result)
 
       -- synchronisation with main stream
       child <- asks ptxStream
@@ -701,15 +681,14 @@ executeOp
     :: (Shape sh, Marshalable (Par PTX) args)
     => Kernel
     -> Gamma aenv
-    -> Val aenv
     -> sh
     -> args
     -> Par PTX ()
-executeOp kernel gamma aenv sh args =
+executeOp kernel gamma sh args =
   let n = size sh
   in  when (n > 0) $ do
         stream <- asks ptxStream
-        argv   <- marshal (Proxy::Proxy PTX) (args, (gamma, aenv))
+        argv   <- marshal (Proxy::Proxy PTX) (args, gamma)
         liftIO  $ launch kernel stream n argv
 
 

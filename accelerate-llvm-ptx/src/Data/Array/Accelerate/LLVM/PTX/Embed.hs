@@ -32,7 +32,6 @@ import Data.Array.Accelerate.LLVM.PTX.Compile
 import Data.Array.Accelerate.LLVM.PTX.Context
 import Data.Array.Accelerate.LLVM.PTX.Execute                       ( )
 import Data.Array.Accelerate.LLVM.PTX.Execute.Async
-import Data.Array.Accelerate.LLVM.PTX.Execute.Environment
 import Data.Array.Accelerate.LLVM.PTX.Link
 import Data.Array.Accelerate.LLVM.PTX.Target
 
@@ -49,7 +48,7 @@ import qualified Language.Haskell.TH                                as TH
 import qualified Language.Haskell.TH.Syntax                         as TH
 
 
-{-# SPECIALISE INLINE embedOpenAcc :: (Typeable aenv, Typeable arrs) => PTX -> CompiledOpenAcc PTX aenv arrs -> AvalQ PTX aenv -> TExpQ (Val aenv) -> TExpQ (Par PTX (Future arrs)) #-}
+{-# SPECIALISE INLINE embedOpenAcc :: (Typeable aenv, Typeable arrs) => PTX -> CompiledOpenAcc PTX aenv arrs -> AvalQ PTX aenv -> TExpQ (Par PTX (Future arrs)) #-}
 
 instance Embed PTX where
   embedForTarget = embed

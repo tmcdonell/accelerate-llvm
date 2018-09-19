@@ -41,7 +41,6 @@ import Data.Array.Accelerate.Type
 
 import Data.Array.Accelerate.LLVM.AST
 import Data.Array.Accelerate.LLVM.Array.Data
-import Data.Array.Accelerate.LLVM.CodeGen.Environment           ( Gamma )
 import Data.Array.Accelerate.LLVM.Execute.Async
 import Data.Array.Accelerate.LLVM.Execute.Environment
 import Data.Array.Accelerate.LLVM.Extra
@@ -56,49 +55,42 @@ class Remote arch => Execute arch where
   map           :: (Shape sh, Elt b)
                 => ExecutableR arch
                 -> Gamma aenv
-                -> ValR arch aenv
                 -> sh
                 -> Par arch (FutureR arch (Array sh b))
 
   generate      :: (Shape sh, Elt e)
                 => ExecutableR arch
                 -> Gamma aenv
-                -> ValR arch aenv
                 -> sh
                 -> Par arch (FutureR arch (Array sh e))
 
   transform     :: (Shape sh, Elt e)
                 => ExecutableR arch
                 -> Gamma aenv
-                -> ValR arch aenv
                 -> sh
                 -> Par arch (FutureR arch (Array sh e))
 
   backpermute   :: (Shape sh, Elt e)
                 => ExecutableR arch
                 -> Gamma aenv
-                -> ValR arch aenv
                 -> sh
                 -> Par arch (FutureR arch (Array sh e))
 
   fold          :: (Shape sh, Elt e)
                 => ExecutableR arch
                 -> Gamma aenv
-                -> ValR arch aenv
                 -> sh :. Int
                 -> Par arch (FutureR arch (Array sh e))
 
   fold1         :: (Shape sh, Elt e)
                 => ExecutableR arch
                 -> Gamma aenv
-                -> ValR arch aenv
                 -> sh :. Int
                 -> Par arch (FutureR arch (Array sh e))
 
   foldSeg       :: (Shape sh, Elt e)
                 => ExecutableR arch
                 -> Gamma aenv
-                -> ValR arch aenv
                 -> sh :. Int
                 -> DIM1
                 -> Par arch (FutureR arch (Array (sh:.Int) e))
@@ -106,7 +98,6 @@ class Remote arch => Execute arch where
   fold1Seg      :: (Shape sh, Elt e)
                 => ExecutableR arch
                 -> Gamma aenv
-                -> ValR arch aenv
                 -> sh :. Int
                 -> DIM1
                 -> Par arch (FutureR arch (Array (sh:.Int) e))
@@ -114,42 +105,36 @@ class Remote arch => Execute arch where
   scanl         :: (Shape sh, Elt e)
                 => ExecutableR arch
                 -> Gamma aenv
-                -> ValR arch aenv
                 -> sh :. Int
                 -> Par arch (FutureR arch (Array (sh:.Int) e))
 
   scanl1        :: (Shape sh, Elt e)
                 => ExecutableR arch
                 -> Gamma aenv
-                -> ValR arch aenv
                 -> sh :. Int
                 -> Par arch (FutureR arch (Array (sh:.Int) e))
 
   scanl'        :: (Shape sh, Elt e)
                 => ExecutableR arch
                 -> Gamma aenv
-                -> ValR arch aenv
                 -> sh :. Int
                 -> Par arch (FutureR arch (Array (sh:.Int) e, Array sh e))
 
   scanr         :: (Shape sh, Elt e)
                 => ExecutableR arch
                 -> Gamma aenv
-                -> ValR arch aenv
                 -> sh :. Int
                 -> Par arch (FutureR arch (Array (sh:.Int) e))
 
   scanr1        :: (Shape sh, Elt e)
                 => ExecutableR arch
                 -> Gamma aenv
-                -> ValR arch aenv
                 -> sh :. Int
                 -> Par arch (FutureR arch (Array (sh:.Int) e))
 
   scanr'        :: (Shape sh, Elt e)
                 => ExecutableR arch
                 -> Gamma aenv
-                -> ValR arch aenv
                 -> sh :. Int
                 -> Par arch (FutureR arch (Array (sh:.Int) e, Array sh e))
 
@@ -157,7 +142,6 @@ class Remote arch => Execute arch where
                 => Bool               -- ^ update defaults array in-place?
                 -> ExecutableR arch
                 -> Gamma aenv
-                -> ValR arch aenv
                 -> sh
                 -> Array sh' e
                 -> Par arch (FutureR arch (Array sh' e))
@@ -166,7 +150,6 @@ class Remote arch => Execute arch where
                 => sh
                 -> ExecutableR arch
                 -> Gamma aenv
-                -> ValR arch aenv
                 -> sh
                 -> Par arch (FutureR arch (Array sh e))
 
@@ -174,7 +157,6 @@ class Remote arch => Execute arch where
                 => sh
                 -> ExecutableR arch
                 -> Gamma aenv
-                -> ValR arch aenv
                 -> sh
                 -> sh
                 -> Par arch (FutureR arch (Array sh e))
@@ -330,21 +312,28 @@ executeOpenAcc !topAcc !aenv = travA topAcc
         Stencil2 h sh1 sh2  -> exec2 (stencil2 h) (travE sh2) (travE sh1)
 
       where
-        exec1 :: (ExecutableR arch -> Gamma aenv -> ValR arch aenv -> a -> Par arch (FutureR arch b))
+        exec1 :: (ExecutableR arch -> Gamma aenv -> a -> Par arch (FutureR arch b))
               -> Par arch (FutureR arch a)
               -> Par arch (FutureR arch b)
         exec1 f x = do
           x' <- x
-          spawn $ f kernel gamma aenv =<< get x'
+          spawn $ do
+            g <- makeGamma gamma aenv
+            v <- get x'
+            f kernel g v
 
-        exec2 :: (ExecutableR arch -> Gamma aenv -> ValR arch aenv -> a -> b -> Par arch (FutureR arch c))
+        exec2 :: (ExecutableR arch -> Gamma aenv -> a -> b -> Par arch (FutureR arch c))
               -> Par arch (FutureR arch a)
               -> Par arch (FutureR arch b)
               -> Par arch (FutureR arch c)
         exec2 f x y = do
           x' <- x
           y' <- y
-          spawn $ id =<< liftM2 (f kernel gamma aenv) (get x') (get y')
+          spawn $ do
+            g <- makeGamma gamma aenv
+            u <- get x'
+            v <- get y'
+            f kernel g u v
 
     travAF :: ExecOpenAfun arch aenv (a -> b) -> FutureR arch a -> Par arch (FutureR arch b)
     travAF (Alam (Abody f)) a = executeOpenAcc f (aenv `Push` a)

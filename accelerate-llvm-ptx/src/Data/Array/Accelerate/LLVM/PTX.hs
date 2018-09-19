@@ -468,26 +468,20 @@ runQ'_ using k f = do
          -> [TH.StmtQ]
          -> TH.ExpQ
       go (Alam l) aenv stmts = do
-        x     <- newTName "x"   -- lambda bound variable
-        a     <- newTName "a"   -- local array name
+        x <- newTName "x"   -- lambda bound variable
+        a <- newTName "a"   -- local array name
         TH.lamE [TH.bangP (varP x)] (go l (aenv `ApushQ` varE a) (TH.bindS (varP a) [| useRemoteAsync $(TH.varE (unTName x)) |] : stmts))
       --
       go (Abody b) aenv stmts = do
-        r     <- newTName "r"
-        aenvq <- newTName "aenv"
+        r <- newTName "r"
         --
         [| $using
            . phase "execute"
            $ $(k $ TH.doE ( reverse stmts ++      -- useRemoteAsync
-                           [ letS [valD (varP aenvq) (normalB (mkEnv aenv)) []]
-                           , bindS (varP r) (embedOpenAcc defaultTarget b aenv (varE aenvq))
+                           [ bindS (varP r) (embedOpenAcc defaultTarget b aenv)
                            , TH.noBindS [| get $(TH.unTypeQ (varE r)) |]
                            ]))
          |]
-
-      mkEnv :: AvalQ PTX aenv -> TExpQ (Val aenv)
-      mkEnv AemptyQ        = [|| Empty ||]
-      mkEnv (ApushQ env x) = [|| $$(mkEnv env) `Push` $$x ||]
   --
   go afun AemptyQ []
 

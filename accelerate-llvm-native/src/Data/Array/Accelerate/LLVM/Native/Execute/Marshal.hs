@@ -30,19 +30,16 @@ module Data.Array.Accelerate.LLVM.Native.Execute.Marshal (
 ) where
 
 -- accelerate
-import Data.Array.Accelerate.LLVM.CodeGen.Environment           ( Gamma, Idx'(..) )
-import qualified Data.Array.Accelerate.LLVM.Execute.Marshal     as M
-
 import Data.Array.Accelerate.LLVM.Native.Array.Data
 import Data.Array.Accelerate.LLVM.Native.Execute.Async
-import Data.Array.Accelerate.LLVM.Native.Execute.Environment
 import Data.Array.Accelerate.LLVM.Native.Target
 import Data.Array.Accelerate.LLVM.State
+import qualified Data.Array.Accelerate.LLVM.Execute.Marshal     as M
 
 -- libraries
+import Data.Proxy
 import Data.DList                                               ( DList )
 import qualified Data.DList                                     as DL
-import qualified Data.IntMap                                    as IM
 import qualified Foreign.LibFFI                                 as FFI
 
 
@@ -60,21 +57,22 @@ instance Monad m => M.Marshalable Native m Int where
   {-# INLINE marshal' #-}
   marshal' _ x = return $ DL.singleton (FFI.argInt x)
 
-instance {-# OVERLAPS #-} M.Marshalable Native (Par Native) (Gamma aenv, Val aenv) where
-  {-# INLINE marshal' #-}
-  marshal' proxy (gamma, aenv)
-    = fmap DL.concat
-    $ mapM (\(_, Idx' idx) -> liftPar . M.marshal' proxy =<< get (prj idx aenv)) (IM.elems gamma)
-
 instance ArrayElt e => M.Marshalable Native (Par Native) (ArrayData e) where
   {-# INLINE marshal' #-}
-  marshal' proxy adata = liftPar (M.marshal' proxy adata)
+  marshal' arch adata = liftPar (M.marshal' arch adata)
 
 instance ArrayElt e => M.Marshalable Native (LLVM Native) (ArrayData e) where
   {-# INLINE marshal' #-}
-  marshal' _ adata = return $ marshalR arrayElt adata
+  marshal' arch adata = M.marshal1' arch (Proxy::Proxy ArrayElt) adata
+
+instance M.Marshalable1 Native (Par Native) ArrayElt GArrayData where
+  {-# INLINE marshal1' #-}
+  marshal1' arch aer adata = liftPar (M.marshal1' arch aer adata)
+
+instance M.Marshalable1 Native (LLVM Native) ArrayElt GArrayData where
+  {-# INLINE marshal1' #-}
+  marshal1' _ _ adata = return $ marshalR arrayElt adata
     where
-      {-# INLINE marshalR #-}
       marshalR :: ArrayEltR e' -> ArrayData e' -> DList FFI.Arg
       marshalR ArrayEltRunit    !_  = DL.empty
       marshalR ArrayEltRint     !ad = DL.singleton $ FFI.argPtr (ptrsOfArrayData ad)

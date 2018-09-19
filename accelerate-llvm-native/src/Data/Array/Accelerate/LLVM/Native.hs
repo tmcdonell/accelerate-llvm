@@ -396,28 +396,22 @@ runQ' using target f = do
          -> [TH.StmtQ]
          -> TH.ExpQ
       go (Alam l) aenv stmts = do
-        x     <- newTName "x"   -- lambda bound variable
-        a     <- newTName "a"   -- local array name
+        x <- newTName "x"   -- lambda bound variable
+        a <- newTName "a"   -- local array name
         TH.lamE [TH.bangP (varP x)] (go l (aenv `ApushQ` varE a) (TH.bindS (varP a) [| useRemoteAsync $(TH.varE (unTName x)) |] : stmts))
       --
       go (Abody b) aenv stmts = do
-        r     <- newTName "r"   -- final result
-        aenvq <- newTName "aenv"
+        r <- newTName "r"   -- final result
         --
         [| $using
            . phase "execute" elapsedP
            . evalNative ($target { segmentOffset = True })
            . evalPar
            $ $(TH.doE $ reverse stmts ++      -- useRemoteAsync
-                      [ letS [valD (varP aenvq) (normalB (mkEnv aenv)) []]
-                      , bindS (varP r) (embedOpenAcc (defaultTarget { segmentOffset = True }) b aenv (varE aenvq))
+                      [ bindS (varP r) (embedOpenAcc (defaultTarget { segmentOffset = True }) b aenv)
                       , TH.noBindS [| get $(TH.varE (unTName r)) |]
                       ])
          |]
-
-      mkEnv :: AvalQ Native aenv -> TExpQ (Val aenv)
-      mkEnv AemptyQ        = [|| Empty ||]
-      mkEnv (ApushQ env x) = [|| $$(mkEnv env) `Push` $$x ||]
   --
   go afun AemptyQ []
 

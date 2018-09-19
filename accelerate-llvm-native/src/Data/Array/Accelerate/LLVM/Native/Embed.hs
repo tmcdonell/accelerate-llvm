@@ -36,7 +36,6 @@ import Data.Array.Accelerate.LLVM.Native.Compile
 import Data.Array.Accelerate.LLVM.Native.Compile.Cache
 import Data.Array.Accelerate.LLVM.Native.Execute                    ( )
 import Data.Array.Accelerate.LLVM.Native.Execute.Async
-import Data.Array.Accelerate.LLVM.Native.Execute.Environment
 import Data.Array.Accelerate.LLVM.Native.Link
 import Data.Array.Accelerate.LLVM.Native.Plugin.Annotation
 import Data.Array.Accelerate.LLVM.Native.State
@@ -55,7 +54,7 @@ import qualified Language.Haskell.TH                                as TH
 import qualified Language.Haskell.TH.Syntax                         as TH
 
 
-{-# SPECIALISE INLINE embedOpenAcc :: (Typeable aenv, Typeable arrs) => Native -> CompiledOpenAcc Native aenv arrs -> AvalQ Native aenv -> TExpQ (Val aenv) -> TExpQ (Par Native (Future arrs)) #-}
+{-# SPECIALISE INLINE embedOpenAcc :: (Typeable aenv, Typeable arrs) => Native -> CompiledOpenAcc Native aenv arrs -> AvalQ Native aenv -> TExpQ (Par Native (Future arrs)) #-}
 
 instance Embed Native where
   embedForTarget = embed
