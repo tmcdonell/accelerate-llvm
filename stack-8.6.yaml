@@ -68,6 +68,10 @@ extra-deps:
 - git:    https://github.com/tmcdonell/hs-memory.git
   commit: feee6256e19ed178dc75b071dc54983bc6320f26
 
+# https://github.com/haskell/c2hs/pull/213
+- git:    https://github.com/vmchale/c2hs.git
+  commit: 6f4ca7de6ba240dbcd78dd03d81dad750c002893
+
 - abstract-deque-0.3
 - adjunctions-4.4
 - ansi-terminal-0.8.1
