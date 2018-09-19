@@ -85,14 +85,14 @@ instance Async PTX where
   new       = Future <$> liftIO (newIORef Empty)
   newFull v = Future <$> liftIO (newIORef (Full v))
 
-  {-# INLINE spawn #-}
+  {-# INLINEABLE spawn #-}
   spawn m = do
     s' <- liftPar Stream.create
     r  <- local (const (s', Nothing)) m
     liftIO (Stream.destroy s')
     return r
 
-  {-# INLINE fork #-}
+  {-# INLINEABLE fork #-}
   fork m = do
     s' <- liftPar (Stream.create)
     () <- local (const (s', Nothing)) m
@@ -102,7 +102,7 @@ instance Async PTX where
   -- a new event in the current execution stream and once that is filled we can
   -- transition the IVar to Full.
   --
-  {-# INLINE put #-}
+  {-# INLINEABLE put #-}
   put (Future ref) v = do
     stream <- asks ptxStream
     kernel <- asks ptxKernel
@@ -118,7 +118,7 @@ instance Async PTX where
   -- thread waiting on a value; if we get an empty IVar at this point, something
   -- has gone wrong.
   --
-  {-# INLINE get #-}
+  {-# INLINEABLE get #-}
   get (Future ref) = do
     stream <- asks ptxStream
     liftIO  $ do
@@ -151,7 +151,7 @@ liftPar = Par . lift
 -- | Block the calling _host_ thread until the value offered by the future is
 -- available.
 --
-{-# INLINE wait #-}
+{-# INLINEABLE wait #-}
 wait :: Future a -> IO a
 wait (Future ref) = do
   ivar <- readIORef ref

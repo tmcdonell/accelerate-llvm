@@ -89,7 +89,13 @@ instance Async Native where
   fork  = id
   spawn = id
 
-  {-# INLINE get #-}
+  -- NOTE: [Inlining get and put]
+  --
+  -- We don't want to unconditionally inline 'get' and 'put', because the body
+  -- is not small (due to the use of Data.Sequence) and the operations are used
+  -- many times. This causes SpecConstr to explode.
+  --
+  {-# INLINEABLE get #-}
   get (Future ref) =
     callCC $ \k -> do
       native <- gets llvmTarget
@@ -99,7 +105,7 @@ instance Async Native where
                   Full a     -> (Full a,                                         return a)
       next
 
-  {-# INLINE put #-}
+  {-# INLINEABLE put #-}
   put future ref = do
     Native{..} <- gets llvmTarget
     liftIO (putIO workers future ref)
@@ -121,7 +127,7 @@ evalParIO native@Native{..} work =
 -- | The value represented by a future is now available. Push any blocked
 -- continuations to the worker threads.
 --
-{-# INLINE putIO #-}
+{-# INLINEABLE putIO #-}
 putIO :: Workers -> Future a -> a -> IO ()
 putIO workers (Future ref) v = do
   ks <- atomicModifyIORef' ref $ \case
@@ -135,7 +141,7 @@ putIO workers (Future ref) v = do
 
 -- | The worker threads should search for other work to execute
 --
-{-# INLINE reschedule #-}
+{-# INLINEABLE reschedule #-}
 reschedule :: Par Native a
 reschedule = Par $ ContT (\_ -> return ())
 
