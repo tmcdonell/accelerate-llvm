@@ -57,7 +57,7 @@ varP (TName n) = TH.varP n
 letE :: [TH.DecQ] -> TExpQ a -> TExpQ a
 letE ds e = TH.unsafeTExpCoerce $ TH.letE ds (TH.unTypeQ e)
 
-doE :: [TH.StmtQ] -> TH.TExpQ a
+doE :: [TH.StmtQ] -> TExpQ a
 doE ss = TH.unsafeTExpCoerce (TH.doE ss)
 
 bindS :: TH.PatQ -> TExpQ b -> TH.StmtQ
