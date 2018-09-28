@@ -12,10 +12,11 @@ cache:
   timeout: 600
   directories:
     - $HOME/.stack/snapshots
+    - $HOME/.local/bin
     - .stack-work/install
 
 before_cache:
-  - rm -rf $(stack path --local-install-root)/bin
+  # - rm -rf $(stack path --local-install-root)/bin
   - rm -rf $(stack path --local-install-root)/doc
 
 addons:
@@ -24,11 +25,13 @@ addons:
       - hvr-ghc
       - ubuntu-toolchain-r-test
       - llvm-toolchain-trusty
-      - llvm-toolchain-trusty-4.0
-      - llvm-toolchain-trusty-5.0
       - llvm-toolchain-trusty-6.0
+      - llvm-toolchain-trusty-5.0
+      - llvm-toolchain-trusty-4.0
+      - sourceline: "deb http://deb.debian.org/debian experimental main"
 
     packages: &apt_packages
+      - dpkg
       - g++-4.8
       - libgmp-dev
       - happy-1.19.5
@@ -36,44 +39,40 @@ addons:
 
 matrix:
   include:
-    - env: GHC=8.6.1 CABAL=2.2 LLVM=6.0.0 CUDA=8.0.61-1
+    - env: GHC=8.6.1 LLVM=6.0.0 CUDA=8.0.61-1
       compiler: "GHC 8.6"
       addons:
         apt:
           sources: *apt_sources
           packages:
             - *apt_packages
-            - cabal-install-2.2
             - llvm-6.0-dev
 
-    - env: GHC=8.4.3 CABAL=2.0 LLVM=6.0.0 CUDA=8.0.61-1
+    - env: GHC=8.4.3 LLVM=6.0.0 CUDA=8.0.61-1
       compiler: "GHC 8.4"
       addons:
         apt:
           sources: *apt_sources
           packages:
             - *apt_packages
-            - cabal-install-2.0
             - llvm-6.0-dev
 
-    - env: GHC=8.2.2 CABAL=2.0 LLVM=5.0.0 CUDA=8.0.61-1
+    - env: GHC=8.2.2 LLVM=5.0.0 CUDA=8.0.61-1
       compiler: "GHC 8.2"
       addons:
         apt:
           sources: *apt_sources
           packages:
             - *apt_packages
-            - cabal-install-2.0
             - llvm-5.0-dev
 
-    - env: GHC=8.0.2 CABAL=1.24 LLVM=4.0.0 CUDA=8.0.61-1
+    - env: GHC=8.0.2 LLVM=4.0.0 CUDA=8.0.61-1
       compiler: "GHC 8.0"
       addons:
         apt:
           sources: *apt_sources
           packages:
             - *apt_packages
-            - cabal-install-1.24
             - llvm-4.0-dev
 
     # - env: GHC=head CABAL=head LLVM=3.9.1
@@ -81,33 +80,35 @@ matrix:
     #   addons: { apt: { sources: [ hvr-ghc, ubuntu-toolchain-r-test ], packages: [ nvidia-cuda-toolkit, g++-4.8, ghc-head, cabal-install-head, happy-1.19.5, alex-3.1.7 ] }}
 
   allow_failures:
-    - env: GHC=8.6.1 CABAL=2.2 LLVM=6.0.0 CUDA=8.0.61-1
+    - env: GHC=8.6.1 LLVM=6.0.0 CUDA=8.0.61-1
   #   - env: GHC=head CABAL=head LLVM=3.9.1
 
   fast_finish: true
 
 before_install:
-  - export PATH=/opt/cabal/$CABAL/bin:/opt/alex/3.1.7/bin:/opt/happy/1.19.5/bin:$HOME/.cabal/bin:$PATH
-  # - |
-  #     case ${GHC} in
-  #       7.8.*) export UPGRADE_CABAL=1 ;;
-  #     esac
-  # - |
-  #     case ${LLVM} in
-  #       3.5.*) source .travis/install-llvm-trusty.sh ;;
-  #     esac
+  - export PATH=/opt/alex/3.1.7/bin:/opt/happy/1.19.5/bin:$PATH
   - export CUDA_INSTALL_EXTRA_LIBS=0  # cublas, cufft, etc.
   - source .travis/install-cuda-trusty.sh
   - source .travis/install-stack.sh
   - source .travis/update-ghc-settings.sh
 
-  # ghc bug? error while loading shared libraries: libffi.so.7
-  # (only required for ghc-8.4+)
-  - export LD_LIBRARY_PATH=$(ls -d $(dirname $(stack path --compiler-bin))/lib/ghc-*/rts):$LD_LIBRARY_PATH
+  # GHC 8.4+ require libffi7
+  # - sudo apt-get install debian-archive-keyring
+  - sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-key 0x7638D0442B90D010
+  - sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-key 0x8B48AD6246925553
+  - sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-key 0x04EE7237B7D453EC
+  - sudo apt-get update
+  - sudo apt-get install -y libffi7
+
+  # ghc-8.6 builds a broken version of c2hs
+  - |
+      if [ ${GHC%.*} == "8.6" -a ! -x "$(which c2hs)" ]; then
+        travis_retry stack --stack-yaml=stack-8.4.yaml setup --no-terminal --no-system-ghc
+        travis_retry stack --stack-yaml=stack-8.4.yaml install c2hs --fast --no-terminal
+      fi
 
   # build environment
   - echo "$(stack exec ghc -- --version) [$(stack exec ghc -- --print-project-git-commit-id 2> /dev/null || echo '?')]"
-  - cabal --version
   - stack --version
   - llc-${LLVM:0:3} --version; true
   - opt-${LLVM:0:3} --version; true
