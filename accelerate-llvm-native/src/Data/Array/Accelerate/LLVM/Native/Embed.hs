@@ -46,7 +46,6 @@ import Control.Monad
 import Data.Hashable
 import Data.Typeable
 import Foreign.Ptr
-import GHC.Ptr                                                      ( Ptr(..) )
 import Language.Haskell.TH                                          ( Q, TExp )
 import Numeric
 import System.IO.Unsafe
@@ -71,13 +70,6 @@ embed target (ObjectR uid nms !_) = do
   where
     listE :: [Q (TExp a)] -> Q (TExp [a])
     listE xs = TH.unsafeTExpCoerce (TH.listE (map TH.unTypeQ xs))
-
-    liftSBS :: ShortByteString -> Q (TExp ShortByteString)
-    liftSBS bs =
-      let bytes = BS.unpack bs
-          len   = BS.length bs
-      in
-      [|| unsafePerformIO $ BS.createFromPtr $$( TH.unsafeTExpCoerce [| Ptr $(TH.litE (TH.StringPrimL bytes)) |]) len ||]
 
     makeEXE :: FilePath -> Q (TExp (ExecutableR Native))
     makeEXE objFile = do
