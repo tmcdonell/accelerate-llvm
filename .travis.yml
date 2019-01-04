@@ -39,7 +39,7 @@ addons:
 
 matrix:
   include:
-    - env: GHC=8.6.1 LLVM=6.0.0 CUDA=10.0.130-1
+    - env: GHC=8.6.3 LLVM=6.0.0 CUDA=10.0.130-1
       compiler: "GHC 8.6"
       addons:
         apt:
