@@ -18,6 +18,8 @@ extra-deps:
     - llvm-hs
     - llvm-hs-pure
 
+- tasty-hedgehog-0.2.0.0
+
 # Override default flag values for local packages and extra-deps
 # flags: {}
 
